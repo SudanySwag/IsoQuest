@@ -22,6 +22,7 @@ local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
 local cam_x = 0
+local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
 
 -- CUSTOM RGB COLORS using integer format!
 -- Formula: (R * 65536) + (G * 256) + B
@@ -198,6 +199,7 @@ function update_player()
             py = math.floor(b / TILE) * TILE - player_size/2
             vy = 0
             on_ground = true
+            jumps_remaining = 2  -- Reset jumps when landing
         end
     end
 
@@ -335,8 +337,9 @@ event.keypress = function(key)
             vx = 5
             return true
         elseif key == KEY.UP or key == KEY.SET then
-            if on_ground then
+            if jumps_remaining > 0 then
                 vy = -11
+                jumps_remaining = jumps_remaining - 1
             end
             return true
         elseif key == KEY.MENU then
