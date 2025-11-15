@@ -69,13 +69,12 @@ function capture_and_detect_edges()
 
     if camera and camera.shoot then
         camera.shoot()
+        task.yield(1000)  -- Wait for capture to complete
     else
         print("Camera not available - using demo")
         create_demo_level()
         return true
     end
-
-    task.yield(500)
 
     print("Analyzing edges...")
     print("Please wait 10-30 seconds...")
@@ -83,7 +82,7 @@ function capture_and_detect_edges()
     init_level()
 
     local samples = 2
-    local threshold = 35
+    local threshold = 30  -- Adjusted threshold for real pixel data
 
     for ty = 1, ROWS do
         for tx = 1, COLS do
@@ -95,24 +94,41 @@ function capture_and_detect_edges()
                     local px = (tx - 1) * TILE + sx * (TILE / samples)
                     local py = (ty - 1) * TILE + sy * (TILE / samples)
 
-                    local brightness = (px * py) % 255
-                    local neighbor = ((px + 5) * py) % 255
+                    -- Read actual pixel color from display buffer
+                    local color = display.pixel(px, py)
+                    
+                    -- Convert color to brightness (Y component approximation)
+                    -- Extract RGB from color value
+                    local r = math.floor(color / 65536) % 256
+                    local g = math.floor(color / 256) % 256
+                    local b = color % 256
+                    local brightness = 0.299 * r + 0.587 * g + 0.114 * b
+                    
+                    -- Sample neighbor pixel
+                    local neighbor_x = math.min(px + 3, W - 1)
+                    local neighbor_color = display.pixel(neighbor_x, py)
+                    local nr = math.floor(neighbor_color / 65536) % 256
+                    local ng = math.floor(neighbor_color / 256) % 256
+                    local nb = neighbor_color % 256
+                    local neighbor_brightness = 0.299 * nr + 0.587 * ng + 0.114 * nb
 
-                    if math.abs(brightness - neighbor) > threshold then
+                    -- Edge detection: high gradient = edge
+                    if math.abs(brightness - neighbor_brightness) > threshold then
                         edge_pixels = edge_pixels + 1
                     end
                     total = total + 1
                 end
             end
 
-            if edge_pixels / total > 0.18 then
+            -- If enough edges detected in tile, mark as platform
+            if edge_pixels / total > 0.15 then
                 level[ty][tx] = 1
             end
         end
 
         if ty % 5 == 0 then
             print(math.floor(ty/ROWS*100) .. "%")
-            task.yield(1)
+            task.yield(10)  -- Increased yield for processing time
         end
     end
 
@@ -122,7 +138,7 @@ function capture_and_detect_edges()
         level[ROWS-1][x] = 1
     end
 
-    -- Thicken platforms
+    -- Thicken platforms for better gameplay
     for ty = 1, ROWS - 2 do
         for tx = 1, COLS do
             if level[ty][tx] == 1 and level[ty+1][tx] == 0 then
