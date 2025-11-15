@@ -337,12 +337,22 @@ event.keypress = function(key)
         end
 
     elseif state == "playing" then
-        if key == KEY.LEFT then
-            vx = -5
-            return true
-        elseif key == KEY.RIGHT then
-            vx = 5
-            return true
+            if key == KEY.LEFT then
+                if on_ground then
+                    vx = -5  -- Full control on ground
+                else
+                    vx = vx - 1.5  -- Reduced air control via acceleration
+                    if vx < -5 then vx = -5 end
+                end
+                return true
+            elseif key == KEY.RIGHT then
+                if on_ground then
+                    vx = 5  -- Full control on ground
+                else
+                    vx = vx + 1.5  -- Reduced air control via acceleration
+                    if vx > 5 then vx = 5 end
+                end
+                return true
         elseif key == KEY.UP or key == KEY.SET then
             if on_ground then
                 vy = -11
