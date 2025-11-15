@@ -228,7 +228,7 @@ function update_player()
 end
 
 -- Draw entire background ONCE (like pong clears screen once)
-function draw_background_once()
+function draw_level()
     display.clear()
     
     -- Sky background
@@ -312,7 +312,7 @@ local running = false
 
 function game_loop()
     -- Draw background ONCE (like pong does display.clear() once)
-    draw_background_once()
+    draw_level()
     prev_px = px
     prev_py = py
     
@@ -327,6 +327,7 @@ end
 -- Input handling
 function key_handler()
     local key = keys:getkey()
+    local handled = false
     if state == "menu" then
         if key == KEY.SET then
             state = "processing"
@@ -341,7 +342,7 @@ function key_handler()
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
             running = true
-            draw_background_once()
+            draw_level()
             prev_px = px
             prev_py = py
             return true
@@ -351,43 +352,46 @@ function key_handler()
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
             running = true
-            draw_background_once()
+            draw_level()
             prev_px = px
             prev_py = py
             return true
         end
 
     elseif state == "playing" then
-            if key == KEY.LEFT then
-                if on_ground then
-                    vx = -5  -- Full control on ground
-                else
-                    vx = vx - 1.5  -- Reduced air control via acceleration
-                    if vx < -5 then vx = -5 end
-                end
-                return true
-            elseif key == KEY.RIGHT then
-                if on_ground then
-                    vx = 5  -- Full control on ground
-                else
-                    vx = vx + 1.5  -- Reduced air control via acceleration
-                    if vx > 5 then vx = 5 end
-                end
-                return true
-        elseif key == KEY.UP or key == KEY.SET then
+        if key == KEY.LEFT then
+            if on_ground then
+                vx = -5  -- Full control on ground
+            else
+                vx = vx - 1.5  -- Reduced air control via acceleration
+                if vx < -5 then vx = -5 end
+            end
+            handled = true
+        end
+        if key == KEY.RIGHT then
+            if on_ground then
+                vx = 5  -- Full control on ground
+            else
+                vx = vx + 1.5  -- Reduced air control via acceleration
+                if vx > 5 then vx = 5 end
+            end
+            handled = true
+        end
+        if key == KEY.UP or key == KEY.SET then
             if jumps_remaining > 0 then
                 vy = -11
                 jumps_remaining = jumps_remaining - 1
             end
-            return true
-        elseif key == KEY.MENU then
+            handled = true
+        end
+        if key == KEY.MENU then
             running = false
             state = "menu"
-            return true
+            handled = true
         end
     end
 
-    return false
+    return handled
 end
 
 function main()
