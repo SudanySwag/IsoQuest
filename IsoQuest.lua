@@ -72,13 +72,17 @@ function capture_and_detect_edges()
 
     if camera and camera.shoot then
         camera.shoot()
+        task.yield(500)
+        
+        -- CRITICAL: Stop camera after capture
+        if camera.stop then
+            camera.stop()
+        end
     else
         print("Camera not available - using demo")
         create_demo_level()
         return true
     end
-
-    task.yield(500)
 
     print("Analyzing edges...")
     print("Please wait 10-30 seconds...")
@@ -312,7 +316,6 @@ end
 local running = false
 
 function game_loop()
-    draw_background_once()
     while running do
         update_player()
         draw_player()
@@ -335,6 +338,7 @@ event.keypress = function(key)
 
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
+            draw_background_once()  -- Draw background BEFORE starting game loop
             running = true
             task.create(game_loop)
             return true
@@ -343,6 +347,7 @@ event.keypress = function(key)
             create_demo_level()
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
+            draw_background_once()  -- Draw background BEFORE starting game loop
             running = true
             task.create(game_loop)
             return true
