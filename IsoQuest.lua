@@ -297,22 +297,11 @@ end
 local running = false
 
 function game_loop()
-    menu.block(true)
-    task.yield(100)
-    
-    -- Draw background ONCE (like pong does display.clear() once)
-    draw_background_once()
-    prev_px = px
-    prev_py = py
-    
-    -- Main loop - only update player (like pong only updates ball/paddles)
     while running do
         update_player()
         draw_player()
         task.yield(40)
     end
-    
-    menu.block(false)
 end
 
 -- Input handling
@@ -368,7 +357,7 @@ end
 -- Display task
 event.shoot_task = function()
     if state == "menu" then
-        display.draw(draw_menu)
+        draw_menu()
     end
     return true
 end
