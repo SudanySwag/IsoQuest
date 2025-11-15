@@ -24,6 +24,8 @@ local state = "load_menu"
 local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
+local cam_x = 0
+local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
 
 -- Previous player position for erasing
 local prev_px, prev_py = 100, 200
@@ -174,7 +176,7 @@ end
 function update_player()
     vy = vy + 0.8
     if vy > 15 then vy = 15 end
-
+    
     px = px + vx
 
     local l = px - player_size/2
@@ -200,6 +202,7 @@ function update_player()
             py = math.floor(b / TILE) * TILE - player_size/2
             vy = 0
             on_ground = true
+            jumps_remaining = 2  -- Reset jumps when landing
         end
     end
 
@@ -213,7 +216,15 @@ function update_player()
     if on_ground then
         vx = vx * 0.7
         if math.abs(vx) < 0.1 then vx = 0 end
+    else
+        -- Apply air friction when not on ground
+        vx = vx * 0.85
     end
+
+    
+    -- Cap horizontal speed
+    if vx > 6 then vx = 6 end
+    if vx < -6 then vx = -6 end
 end
 
 -- Draw entire background ONCE (like pong clears screen once)
@@ -347,15 +358,26 @@ function key_handler()
         end
 
     elseif state == "playing" then
-        if key == KEY.LEFT then
-            vx = -5
-            return true
-        elseif key == KEY.RIGHT then
-            vx = 5
-            return true
+            if key == KEY.LEFT then
+                if on_ground then
+                    vx = -5  -- Full control on ground
+                else
+                    vx = vx - 1.5  -- Reduced air control via acceleration
+                    if vx < -5 then vx = -5 end
+                end
+                return true
+            elseif key == KEY.RIGHT then
+                if on_ground then
+                    vx = 5  -- Full control on ground
+                else
+                    vx = vx + 1.5  -- Reduced air control via acceleration
+                    if vx > 5 then vx = 5 end
+                end
+                return true
         elseif key == KEY.UP or key == KEY.SET then
-            if on_ground then
+            if jumps_remaining > 0 then
                 vy = -11
+                jumps_remaining = jumps_remaining - 1
             end
             return true
         elseif key == KEY.MENU then
