@@ -258,7 +258,7 @@ end
 function draw_player()
     -- Erase old player position
     display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR.SKY, COLOR.SKY)
+                player_size + 2, player_size + 2, COLOR_SKY, COLOR_SKY)
 
     -- Redraw platform tiles under old player
     local prev_tile_x = math.floor(prev_px / TILE) + 1
