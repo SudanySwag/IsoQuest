@@ -1,5 +1,4 @@
 --[[IsoQuest
-]]
 
 --[[
 ============================================
@@ -11,8 +10,6 @@ CONTROLS:
   Game: Arrows = Move, UP/SET = Jump, MENU = Exit
 ]]
 
-require("keys")
-
 -- Config
 local W, H = 720, 480
 local TILE = 16
@@ -20,36 +17,48 @@ local COLS, ROWS = 45, 30
 local player_size = 14
 
 -- State
-local state = "load_menu"
+local state = "menu"
 local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
 local cam_x = 0
 local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
+local sprite_img = nil
 
--- Previous player position for erasing
-local prev_px, prev_py = 100, 200
-
--- CUSTOM RGB COLORS
+-- CUSTOM RGB COLORS using integer format!
+-- Formula: (R * 65536) + (G * 256) + B
 local function rgb(r, g, b)
     return (r * 65536) + (g * 256) + b
 end
 
-local COLOR_SKY = rgb(135, 206, 235)
-local COLOR_PLATFORM = rgb(139, 69, 19)
-local COLOR_PLAYER = rgb(255, 50, 50)
-local COLOR_TEXT = rgb(255, 255, 255)
-local COLOR_MENU_BG = rgb(50, 50, 50)
-local COLOR_GROUND = rgb(101, 67, 33)
+-- Define custom colors
+local COLOR_SKY = rgb(135, 206, 235)      -- Light blue sky
+local COLOR_PLATFORM = rgb(139, 69, 19)   -- Saddle brown
+local COLOR_PLAYER = rgb(255, 50, 50)     -- Bright red
+local COLOR_TEXT = rgb(255, 255, 255)     -- White
+local COLOR_MENU_BG = rgb(50, 50, 50)     -- Dark gray
+local COLOR_GROUND = rgb(101, 67, 33)     -- Dark brown
 
 -- Fallback to constants if integers don't work
 if not pcall(function() display.rect(0,0,1,1,COLOR_SKY) end) then
+    print("Integer colors not working, using constants")
     COLOR_SKY = COLOR.BLUE
     COLOR_PLATFORM = COLOR.BROWN or COLOR.ORANGE
     COLOR_PLAYER = COLOR.RED
     COLOR_TEXT = COLOR.WHITE
     COLOR_MENU_BG = COLOR.BLACK
     COLOR_GROUND = COLOR.BROWN or COLOR.RED
+end
+
+-- Load player sprite
+function load_sprite()
+    -- The sprite data URL from the user's image
+    sprite_img = display.load("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAASCAYAAABrXO8xAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAy0lEQVR4nGNgGMyAiYGBgYGJgYHhPwMDw38s4hQDBhn+/2dgkGX4z6DAwMAgwPCfQYCBgeE/w38GBgYGhv///zMwMPxnYGD4z8DAwPD//38GBgYGBgYGhv///zMwMPxnYGBgYPj//z8DAwMDAwMDw///DAwMDAwMDAz///9nYGBgYGBgYPj//z8DAwMDAwMDw///DAwMDAwMDAz///9nYGBgYGBgYPj//z8DAwMDAwMDw///DAwMDAwMDAz///9nYGBgYGBgYPj//z8DI+MgBwBWNBcXuP0q0QAAAABJRU5ErkJggg==")
+    if not sprite_img then
+        print("Warning: Could not load sprite, using fallback")
+    else
+        print("Sprite loaded successfully!")
+    end
 end
 
 -- Initialize level
@@ -176,7 +185,7 @@ end
 function update_player()
     vy = vy + 0.8
     if vy > 15 then vy = 15 end
-    
+
     px = px + vx
 
     local l = px - player_size/2
@@ -216,84 +225,23 @@ function update_player()
     if on_ground then
         vx = vx * 0.7
         if math.abs(vx) < 0.1 then vx = 0 end
-    else
-        -- Apply air friction when not on ground
-        vx = vx * 0.85
     end
-
-    
-    -- Cap horizontal speed
-    if vx > 6 then vx = 6 end
-    if vx < -6 then vx = -6 end
 end
 
--- Draw entire background ONCE (like pong clears screen once)
-function draw_level()
-    display.clear()
-    
-    -- Sky background
-    display.rect(0, 0, W, H, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
-
-    -- Draw all platforms (static, never changes)
-    for ty = 1, ROWS do
-        for tx = 1, COLS do
-            if level[ty][tx] == 1 then
-                local sx = (tx - 1) * TILE
-                local sy = (ty - 1) * TILE
-                local color = (ty >= ROWS - 1) and COLOR_GROUND or COLOR_PLATFORM
-                display.rect(sx, sy, TILE, TILE, rgb(80, 40, 10), color)
-            end
-        end
-    end
-
-    -- HUD (static)
-    display.rect(5, 5, 200, 40, COLOR_TEXT, COLOR_MENU_BG)
-    display.print("ISOQuest", 10, 10, FONT.MED, COLOR_TEXT)
-    display.print("MENU to exit", 10, 28, FONT.SMALL, COLOR_TEXT)
-end
-
--- Incremental draw - ONLY player (exactly like pong draws ball)
-function draw_player()
-    -- Erase old player position with TRANSPARENT (like pong erases ball)
-    display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
-
-    -- Redraw any platform tiles that were under the old player
-    local prev_tile_x = math.floor(prev_px / TILE) + 1
-    local prev_tile_y = math.floor(prev_py / TILE) + 1
-    
-    for dy = -1, 1 do
-        for dx = -1, 1 do
-            local ty = prev_tile_y + dy
-            local tx = prev_tile_x + dx
-            if ty >= 1 and ty <= ROWS and tx >= 1 and tx <= COLS and level[ty][tx] == 1 then
-                local sx = (tx - 1) * TILE
-                local sy = (ty - 1) * TILE
-                local color = (ty >= ROWS - 1) and COLOR_GROUND or COLOR_PLATFORM
-                display.rect(sx, sy, TILE, TILE, rgb(80, 40, 10), color)
-            end
-        end
-    end
-
-    -- Draw player at new position (like pong draws ball at new position)
-    display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
-    display.rect(px - player_size/2, py - player_size/2,
-                player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
-
-    -- Store position for next frame (like pong stores prev_ball_x/y)
-    prev_px = px
-    prev_py = py
-end
-
--- Menu
+-- Rendering with custom colors!
 function draw_menu()
     display.clear()
+
+    -- Sky background
     display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
 
-    display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
-    display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
+    -- Title with shadow effect
+    display.print("PHOTO PLATFORMER", 202, 82, FONT.LARGE, COLOR_MENU_BG)
+    display.print("PHOTO PLATFORMER", 200, 80, FONT.LARGE, COLOR_TEXT)
 
+    display.print("v3 - Custom RGB Colors!", 230, 120, FONT.MED, COLOR_TEXT)
+
+    -- Instructions box
     local box_x, box_y = 180, 170
     local box_w, box_h = 360, 100
     display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
@@ -303,31 +251,76 @@ function draw_menu()
     display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
     display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
 
+    -- Buttons
     display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
     display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
+end
+
+function draw_game()
+    display.clear()
+
+    -- Sky background
+    display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+
+    -- Camera follow
+    cam_x = px - W/3
+    if cam_x < 0 then cam_x = 0 end
+    if cam_x > COLS * TILE - W then cam_x = COLS * TILE - W end
+
+    -- Draw platforms
+    local start_col = math.max(1, math.floor(cam_x / TILE))
+    local end_col = math.min(COLS, math.ceil((cam_x + W) / TILE))
+
+    for ty = 1, ROWS do
+        for tx = start_col, end_col do
+            if level[ty][tx] == 1 then
+                local sx = (tx - 1) * TILE - cam_x
+                local sy = (ty - 1) * TILE
+
+                -- Use different color for ground vs platforms
+                local color = (ty >= ROWS - 1) and COLOR_GROUND or COLOR_PLATFORM
+
+                -- Draw with subtle outline
+                display.rect(sx, sy, TILE, TILE, rgb(80, 40, 10), color)
+            end
+        end
+    end
+
+    -- Draw player sprite
+    local spx = px - cam_x
+    local spy = py
+    
+    -- Draw sprite (centered on player position)
+    if sprite_img then
+        display.image(sprite_img, spx - player_size/2, spy - player_size/2, 
+                     player_size, player_size)
+    else
+        -- Fallback rectangle if sprite fails to load
+        display.rect(spx - player_size/2, spy - player_size/2,
+                    player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
+    end
+
+    -- HUD with background
+    display.rect(5, 5, 200, 40, COLOR_TEXT, COLOR_MENU_BG)
+    display.print("Photo Platformer v3", 10, 10, FONT.MED, COLOR_TEXT)
+    display.print("MENU to exit", 10, 28, FONT.SMALL, COLOR_TEXT)
 end
 
 -- Game loop
 local running = false
 
 function game_loop()
-    -- Draw background ONCE (like pong does display.clear() once)
-    draw_level()
-    prev_px = px
-    prev_py = py
-    
-    -- Main loop - only update player (like pong only updates ball/paddles)
+    menu.block(true)
     while running do
         update_player()
-        draw_player()
-        task.yield(20)
+        draw_game()
+        task.yield(40)
     end
+    menu.block(false)
 end
 
 -- Input handling
-function key_handler()
-    local key = keys:getkey()
-    local handled = false
+event.keypress = function(key)
     if state == "menu" then
         if key == KEY.SET then
             state = "processing"
@@ -342,9 +335,7 @@ function key_handler()
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
             running = true
-            draw_level()
-            prev_px = px
-            prev_py = py
+            task.create(game_loop)
             return true
 
         elseif key == KEY.INFO then
@@ -352,83 +343,49 @@ function key_handler()
             px, py, vx, vy = 80, 300, 0, 0
             state = "playing"
             running = true
-            draw_level()
-            prev_px = px
-            prev_py = py
+            task.create(game_loop)
             return true
         end
 
     elseif state == "playing" then
         if key == KEY.LEFT then
+            vx = -5
+            return true
+        elseif key == KEY.RIGHT then
+            vx = 5
+            return true
+        elseif key == KEY.UP or key == KEY.SET then
             if on_ground then
-                vx = -5  -- Full control on ground
-            else
-                vx = vx - 1.5  -- Reduced air control via acceleration
-                if vx < -5 then vx = -5 end
-            end
-            handled = true
-        end
-        if key == KEY.RIGHT then
-            if on_ground then
-                vx = 5  -- Full control on ground
-            else
-                vx = vx + 1.5  -- Reduced air control via acceleration
-                if vx > 5 then vx = 5 end
-            end
-            handled = true
-        end
-        if key == KEY.UP or key == KEY.SET then
-            if jumps_remaining > 0 then
                 vy = -11
-                jumps_remaining = jumps_remaining - 1
             end
-            handled = true
-        end
-        if key == KEY.MENU then
+            return true
+        elseif key == KEY.MENU then
             running = false
             state = "menu"
-            handled = true
+            return true
         end
     end
 
-    return handled
+    return false
 end
 
-function main()
-    keys:start()
-    menu.block(true)
-
-    sleep(0.5)
-    display.clear()
-
-    -- Initialize
-    console.show()
-    print("========================")
-    print("IsoQuest")
-    print("========================")
-    print("")
-    print("Press SET to start!")
-    print("========================")
-
-    draw_menu()
-    state = "menu"
-
-    --event.shoot_task = display_task
-    --event.keypress = key_handler
-    
-    while true do
-        key_handler()
-
-        if running then
-            update_player()
-            draw_player()
-        end
-
-        task.yield(20)
+-- Display task
+event.shoot_task = function()
+    if state == "menu" then
+        display.draw(draw_menu)
     end
-
-    menu.block(false)
-    keys:stop()
+    return true
 end
 
-main()
+-- Initialize
+console.show()
+print("========================")
+print("IsoQuest")
+print("========================")
+print("")
+print("Loading sprite...")
+load_sprite()
+print("Press SET to start!")
+print("========================")
+
+state = "menu"
