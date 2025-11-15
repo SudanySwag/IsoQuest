@@ -212,7 +212,15 @@ function update_player()
     if on_ground then
         vx = vx * 0.7
         if math.abs(vx) < 0.1 then vx = 0 end
+    else
+        -- Apply air friction when not on ground
+        vx = vx * 0.85
     end
+
+    
+    -- Cap horizontal speed
+    if vx > 6 then vx = 6 end
+    if vx < -6 then vx = -6 end
 end
 
 -- Rendering with custom colors!
