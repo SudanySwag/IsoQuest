@@ -1,4 +1,4 @@
---[[IsoQuest
+--[[IsoQuest - FIXED INPUT VERSION
 ]]
 
 --[[
@@ -25,6 +25,13 @@ local on_ground = false
 
 -- Previous player position for erasing
 local prev_px, prev_py = 100, 200
+
+-- INPUT STATE TRACKING (FIX FOR STUCK KEYS)
+local keys_held = {
+    left = false,
+    right = false,
+    jump = false
+}
 
 -- CUSTOM RGB COLORS
 local function rgb(r, g, b)
@@ -170,6 +177,19 @@ function is_solid(x, y)
 end
 
 function update_player()
+    -- FIXED: Apply velocity based on currently held keys
+    if keys_held.left then
+        vx = -5
+    elseif keys_held.right then
+        vx = 5
+    else
+        -- No keys held, apply friction
+        if on_ground then
+            vx = vx * 0.7
+            if math.abs(vx) < 0.1 then vx = 0 end
+        end
+    end
+
     vy = vy + 0.8
     if vy > 15 then vy = 15 end
 
@@ -207,21 +227,16 @@ function update_player()
             vy = 0
         end
     end
-
-    if on_ground then
-        vx = vx * 0.7
-        if math.abs(vx) < 0.1 then vx = 0 end
-    end
 end
 
--- Draw entire background ONCE (like pong clears screen once)
+-- Draw entire background ONCE
 function draw_background_once()
     display.clear()
     
     -- Sky background
     display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
 
-    -- Draw all platforms (static, never changes)
+    -- Draw all platforms
     for ty = 1, ROWS do
         for tx = 1, COLS do
             if level[ty][tx] == 1 then
@@ -233,19 +248,19 @@ function draw_background_once()
         end
     end
 
-    -- HUD (static)
+    -- HUD
     display.rect(5, 5, 200, 40, COLOR_TEXT, COLOR_MENU_BG)
     display.print("ISOQuest", 10, 10, FONT.MED, COLOR_TEXT)
     display.print("MENU to exit", 10, 28, FONT.SMALL, COLOR_TEXT)
 end
 
--- Incremental draw - ONLY player (exactly like pong draws ball)
+-- Incremental draw - ONLY player
 function draw_player()
-    -- Erase old player position with TRANSPARENT (like pong erases ball)
+    -- Erase old player position
     display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
                 player_size + 2, player_size + 2, COLOR.SKY, COLOR.SKY)
 
-    -- Redraw any platform tiles that were under the old player
+    -- Redraw platform tiles under old player
     local prev_tile_x = math.floor(prev_px / TILE) + 1
     local prev_tile_y = math.floor(prev_py / TILE) + 1
     
@@ -262,13 +277,12 @@ function draw_player()
         end
     end
 
-    -- Draw player at new position (like pong draws ball at new position)
+    -- Draw player at new position
     display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
                 player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
     display.rect(px - player_size/2, py - player_size/2,
                 player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
 
-    -- Store position for next frame (like pong stores prev_ball_x/y)
     prev_px = px
     prev_py = py
 end
@@ -298,6 +312,7 @@ end
 local running = false
 
 function game_loop()
+    draw_background_once()
     while running do
         update_player()
         draw_player()
@@ -305,7 +320,7 @@ function game_loop()
     end
 end
 
--- Input handling
+-- FIXED INPUT HANDLING - Key Press
 event.keypress = function(key)
     if state == "menu" then
         if key == KEY.SET then
@@ -335,23 +350,45 @@ event.keypress = function(key)
 
     elseif state == "playing" then
         if key == KEY.LEFT then
-            vx = -5
+            keys_held.left = true
             return true
         elseif key == KEY.RIGHT then
-            vx = 5
+            keys_held.right = true
             return true
         elseif key == KEY.UP or key == KEY.SET then
-            if on_ground then
+            if on_ground and not keys_held.jump then
                 vy = -11
+                keys_held.jump = true
             end
             return true
         elseif key == KEY.MENU then
             running = false
             state = "menu"
+            -- Reset key states
+            keys_held.left = false
+            keys_held.right = false
+            keys_held.jump = false
             return true
         end
     end
 
+    return false
+end
+
+-- FIXED INPUT HANDLING - Key Release
+event.keyrelease = function(key)
+    if state == "playing" then
+        if key == KEY.LEFT then
+            keys_held.left = false
+            return true
+        elseif key == KEY.RIGHT then
+            keys_held.right = false
+            return true
+        elseif key == KEY.UP or key == KEY.SET then
+            keys_held.jump = false
+            return true
+        end
+    end
     return false
 end
 
