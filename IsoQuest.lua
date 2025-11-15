@@ -1,4 +1,5 @@
---[[IsoQuest
+--[
+IsoQuest
 
 --[[
 ============================================
@@ -172,7 +173,7 @@ end
 function update_player()
     vy = vy + 0.8
     if vy > 15 then vy = 15 end
-
+    
     px = px + vx
 
     local l = px - player_size/2
