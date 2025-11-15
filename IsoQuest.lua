@@ -1,20 +1,9 @@
---[[
-@title Shutter Quest
-@desc Using integer colors for custom RGB!
-]]
+--[[IsoQuest]]
 
 --[[
 ============================================
-PHOTO PLATFORMER - Integer Color Version
+PHOTO PLATFORMER
 ============================================
-
-FIXES:
-  ✓ event (not events)
-  ✓ Integer colors (full RGB support!)
-  ✓ Custom sky blue, brown platforms, etc.
-
-Integer color format: (R * 65536) + (G * 256) + B
-Example: rgb(135, 206, 235) = (135 * 65536) + (206 * 256) + 235
 
 CONTROLS:
   Menu: SET = Capture, INFO = Demo
@@ -369,14 +358,8 @@ end
 -- Initialize
 console.show()
 print("========================")
-print("Photo Platformer v3")
-print("Integer Color Version")
+print("IsoQuest")
 print("========================")
-print("")
-print("Using custom RGB colors!")
-print("Sky: rgb(135, 206, 235)")
-print("Platform: rgb(139, 69, 19)")
-print("Player: rgb(255, 50, 50)")
 print("")
 print("Press SET to start!")
 print("========================")
