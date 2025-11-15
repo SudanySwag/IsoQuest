@@ -290,11 +290,13 @@ end
 local running = false
 
 function game_loop()
+    menu.block(true)
     while running do
         update_player()
         draw_game()
         task.yield(40)
     end
+    menu.block(false)
 end
 
 -- Input handling
@@ -350,7 +352,7 @@ end
 -- Display task
 event.shoot_task = function()
     if state == "menu" then
-        draw_menu()
+        display.draw(draw_menu)
     end
     return true
 end
