@@ -65,7 +65,6 @@ end
 
 -- Edge detection
 function capture_and_detect_edges()
-    console.show()
     print("Capturing image...")
 
     local image_path
@@ -73,7 +72,6 @@ function capture_and_detect_edges()
     if camera and camera.shoot then
         camera.shoot()
         camera.wait()  -- Wait for capture to complete
-        task.yield(1000)
         
         -- Get path to most recent image
         if dryos.sd_card then
@@ -462,8 +460,11 @@ function key_handler()
             end
             if key == KEY.MENU then
                 running = false
-                state = "menu"
+                state = "load_menu"
                 handled = true
+            end
+            if key == KEY.PLAY then
+                console.show()
             end
         end
     end
@@ -479,7 +480,6 @@ function main()
     display.clear()
 
     -- Initialize
-    console.show()
     print("========================")
     print("IsoQuest")
     print("========================")
@@ -490,8 +490,6 @@ function main()
     draw_menu()
     state = "menu"
 
-    --event.shoot_task = display_task
-    --event.keypress = key_handler
     
     while true do
         key_handler()
@@ -499,6 +497,9 @@ function main()
         if running then
             update_player()
             draw_player()
+        elseif state == "load_menu" then
+            draw_menu()
+            state = "menu"
         end
 
         task.yield(20)
