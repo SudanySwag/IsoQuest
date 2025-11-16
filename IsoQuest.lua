@@ -19,7 +19,7 @@ require("keys")
 local W, H = 720, 480
 local TILE = 16
 local COLS, ROWS = 45, 30
-local player_size = 14
+local player_size = 42
 
 -- State
 local state = "load_menu"
