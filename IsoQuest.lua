@@ -14,7 +14,6 @@ CONTROLS:
 print("[ISOQUEST] Script loading...")
 
 require("keys")
-local Bitmap = require("lua-bitmap")
 
 -- Config
 local W, H = 720, 480
@@ -42,6 +41,8 @@ end
 local menu_image = nil
 local sprite_image = nil
 local TRANSPARENT_KEY = rgb(255, 0, 255)  -- Magenta as transparent color
+
+local exit_script = false
 
 function load_custom_images()
     print("[ISOQUEST] load_custom_images()")
@@ -102,70 +103,150 @@ end
 
 -- threshold for pixel darkness (0 = black, 255 = white)
 local DARK_THRESHOLD = 80          
-local DARK_RATIO = 0.30            -- % of pixels in tile that must be dark
+local DARK_RATIO = 0.3           -- % of pixels in tile that must be dark
 
--- Create a level from a bitmap object (bmp)
-function create_level_from_bitmap(bmp)
-    print("[ISOQUEST] create_level_from_bitmap() called")
+function generate_level_from_bmp_stream(path)
+    print("[STREAM] Opening BMP: " .. path)
 
-    if not bmp then
-        print("[ISOQUEST][ERROR] bmp is NIL in create_level_from_bitmap()")
+    local f = io.open(path, "rb")
+    if not f then
+        print("[STREAM][ERROR] Cannot open file.")
         return false
     end
 
-    print("[ISOQUEST] bmp.width="..tostring(bmp.width)..
-          " bmp.height="..tostring(bmp.height)..
-          " DARK_THRESHOLD="..tostring(DARK_THRESHOLD)..
-          " DARK_RATIO="..tostring(DARK_RATIO))
+    -- Read file header (14 bytes)
+    local header = f:read(14)
+    if not header or header:sub(1,2) ~= "BM" then
+        print("[STREAM][ERROR] Invalid BMP magic header")
+        f:close()
+        return false
+    end
+
+    -- Read DIB header (40 bytes)
+    local dib = f:read(40)
+    local function dw(off)
+        local b1,b2,b3,b4 = dib:byte(off+1, off+4)
+        return b1 + b2*256 + b3*65536 + b4*16777216
+    end
+    local function w(off)
+        local b1,b2 = dib:byte(off+1, off+2)
+        return b1 + b2*256
+    end
+
+    local width  = dw(4)
+    local height = dw(8)
+    local bpp    = w(14)
+    local compression = dw(16)
+    local function read_dword_LE(s, offset)
+        local b1 = s:byte(offset+1)
+        local b2 = s:byte(offset+2)
+        local b3 = s:byte(offset+3)
+        local b4 = s:byte(offset+4)
+        return b1 + b2*256 + b3*65536 + b4*16777216
+    end
+
+    local pixel_offset = read_dword_LE(header, 10)
+    print("[STREAM] Corrected pixel_offset = " .. pixel_offset)
+
+
+    print("[STREAM] width="..width..
+          " height="..height..
+          " bpp="..bpp..
+          " compression="..compression)
+
+    if compression ~= 0 then
+        print("[STREAM][ERROR] Compressed BMP not supported")
+        f:close()
+        return false
+    end
+
+    if bpp ~= 24 and bpp ~= 32 then
+        print("[STREAM][ERROR] Only 24/32 bpp BMP supported")
+        f:close()
+        return false
+    end
+
+    print("[STREAM] Scanning bitmap rows...")
 
     init_level()
 
-    local w = bmp.width
-    local h = H   -- using screen height
+    local Bpp = bpp / 8
+    local row_bytes = width * Bpp
+    local stride = math.ceil(row_bytes / 4) * 4
 
-    print("[ISOQUEST] Computing tiles: COLS="..COLS.." ROWS="..ROWS)
-    local tiles_x = math.min(COLS, math.floor(w / TILE))
-    local tiles_y = math.min(ROWS, math.floor(h / TILE))
+    -- determine orientation
+    local topdown = (height < 0)
+    if topdown then height = -height end
 
-    print("[ISOQUEST] tiles_x="..tiles_x.." tiles_y="..tiles_y)
+    -- jump to start of pixel data
+    f:seek("set", pixel_offset)
 
-    local total_tiles = tiles_x * tiles_y
-    print("[ISOQUEST] Total tiles to process: "..total_tiles)
+    -- Pre-allocate tile counters
+    local tiles_x = math.min(COLS, math.floor(width / TILE))
+    local tiles_y = math.min(ROWS, math.floor(height / TILE))
 
-    local processed = 0
-
+    local dark_counts = {}
+    local pixel_counts = {}
     for ty = 1, tiles_y do
+        dark_counts[ty] = {}
+        pixel_counts[ty] = {}
         for tx = 1, tiles_x do
-            processed = processed + 1
-            if processed % 50 == 0 then
-                print("[ISOQUEST] Processed "..processed.." / "..total_tiles.." tiles...")
-            end
+            dark_counts[ty][tx] = 0
+            pixel_counts[ty][tx] = TILE*TILE
+        end
+    end
 
-            local dark_count = 0
-            local total = TILE * TILE
+    -- We will store rows in correct order
+    local roworder = {}
+    for y = 0, height-1 do
+        if topdown then
+            table.insert(roworder, y)
+        else
+            table.insert(roworder, height-1-y)
+        end
+    end
 
-            local px0 = (tx - 1) * TILE
-            local py0 = (ty - 1) * TILE
+    -- Process each row
+    for logical_y = 1, height do
+        local bmp_y = roworder[logical_y]
 
-            for py_ = 0, TILE - 1 do
-                local y = py0 + py_
-                for px_ = 0, TILE - 1 do
-                    local x = px0 + px_
+        -- read one full row including padding
+        local raw = f:read(stride)
+        if not raw then print("[STREAM] Read row "..logical_y.." (bmp_y="..bmp_y..")") end
+        if not raw then break end
 
-                    local r,g,b = bmp:get_pixel(x, y)
-                    if r then
-                        local brightness = (r + g + b) / 3
-                        if brightness < DARK_THRESHOLD then
-                            dark_count = dark_count + 1
-                        end
-                    else
-                        -- only warn occasionally
-                        -- (don't spam per pixel)
-                    end
+        local offset = 1
+
+        -- which tile-row is this?
+        local tile_row = math.floor((logical_y-1) / TILE) + 1
+        if tile_row > tiles_y then break end
+
+        for x = 0, width-1 do
+            local tile_col = math.floor(x / TILE) + 1
+            if tile_col <= tiles_x then
+
+                local b = raw:byte(offset)
+                local g = raw:byte(offset+1)
+                local r = raw:byte(offset+2)
+
+                local brightness = (r + g + b) / 3
+
+                if brightness < DARK_THRESHOLD then
+                    dark_counts[tile_row][tile_col] =
+                        dark_counts[tile_row][tile_col] + 1
                 end
             end
 
-            if dark_count / total >= DARK_RATIO then
+            offset = offset + Bpp
+        end
+    end
+
+    print("[STREAM] Finished row scan. Now finalizing tiles...")
+
+    for ty = 1, tiles_y do
+        for tx = 1, tiles_x do
+            local ratio = dark_counts[ty][tx] / pixel_counts[ty][tx]
+            if ratio >= DARK_RATIO then
                 level[ty][tx] = 1
             else
                 level[ty][tx] = 0
@@ -173,41 +254,11 @@ function create_level_from_bitmap(bmp)
         end
     end
 
-    print("[ISOQUEST] Bitmap level generation complete!")
+    f:close()
+    print("[STREAM] Done! Level generated.")
     return true
 end
 
-local bmp, err
-
--- Edge detection & capture
-function capture_and_detect_edges()
-    print("[ISOQUEST] capture_and_detect_edges() called")
-    print("[ISOQUEST] Attempting to load VRAM BMP...")
-
-    local path = "ML/SCRIPTS/screenshots/VRAM8.BMP"
-    print("[ISOQUEST] Bitmap.from_file path: "..path)
-
-    bmp, err = Bitmap.from_file(path)
-
-    if not bmp then
-        print("[ISOQUEST][ERROR] Bitmap.from_file failed.")
-        print("[ISOQUEST][ERROR] Reason: "..tostring(err))
-        return false
-    end
-
-    print("[ISOQUEST] Bitmap loaded successfully. width="..
-          tostring(bmp.width).." height="..tostring(bmp.height))
-
-    print("[ISOQUEST] Generating level from bitmap...")
-    local ok = create_level_from_bitmap(bmp)
-    if not ok then
-        print("[ISOQUEST][ERROR] create_level_from_bitmap() returned false")
-        return false
-    end
-
-    print("[ISOQUEST] Level generated successfully!")
-    return true
-end
 
 -- Demo level
 function create_demo_level()
@@ -405,36 +456,50 @@ function key_handler()
         if key == nil then break end
 
         print("[ISOQUEST] key_handler() key="..tostring(key).." state="..tostring(state))
-
-        if key == KEY.PLAY then
-            console.show()
-        end
         if state == "menu" then
             if key == KEY.SET then
-                print("[ISOQUEST] SET pressed in MENU → processing capture")
+                print("[ISOQUEST] SET pressed → capturing screenshot")
+
+                -- 1. Hide ALL ML + Canon overlays
+                console.hide()               -- hides console if visible
+                print("[ISOQUEST] Overlays hidden")
+
+                -- 2. Trigger autofocus
+                lens.autofocus()                         
+                print("[ISOQUEST] Autofocus started")
+
+                while lens.autofocusing do
+                    task.yield(0.1)
+                end
+
+                                -- Capture screenshot to valid BMP with proper headers
+                local bmp_path = "ML/SCRIPTS/screenshots/capture.bmp"
+                display.screenshot(bmp_path)
+                print("[ISOQUEST] Screenshot saved to: " .. bmp_path)
+
                 state = "processing"
                 display.clear()
-                display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
                 display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
                 display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
 
-                local ok = capture_and_detect_edges()
+                -- NOW load the screenshot as BMP
+                local ok = generate_level_from_bmp_stream(bmp_path)
                 if not ok then
-                    print("[ISOQUEST][ERROR] capture_and_detect_edges() failed. Returning to menu.")
+                    print("[ISOQUEST][ERROR] Could not generate level from screenshot.")
                     state = "menu"
                     draw_menu()
                     return true
                 end
 
+                -- Start game
                 px, py, vx, vy = 80, 300, 0, 0
                 state = "playing"
                 running = true
-                print("[ISOQUEST] Entering PLAYING state (custom level)")
+                print("[ISOQUEST] Entering PLAYING state (screenshot level)")
                 draw_level()
                 prev_px = px
                 prev_py = py
                 return true
-
             elseif key == KEY.INFO then
                 print("[ISOQUEST] INFO pressed in MENU → demo level")
                 create_demo_level()
@@ -445,6 +510,10 @@ function key_handler()
                 draw_level()
                 prev_px = px
                 prev_py = py
+                return true
+            elseif key == KEY.TRASH then
+                print("[ISOQUEST] TRASH pressed → exiting script NOW")
+                exit_script = true
                 return true
             end
 
@@ -483,10 +552,14 @@ function key_handler()
                 state = "load_menu"
                 handled = true
             end
+            if key == KEY.PLAY then
+                console.show()
+            end
         end
     end
     return handled
 end
+
 
 function main()
     print("[ISOQUEST] main() starting up...")
@@ -521,6 +594,11 @@ function main()
             print("[ISOQUEST] Transition state load_menu → menu")
             draw_menu()
             state = "menu"
+        end
+
+        if exit_script then
+            print("[ISOQUEST] Exiting script as requested.")
+            break
         end
 
         task.yield(20)
