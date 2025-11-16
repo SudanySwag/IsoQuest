@@ -342,71 +342,74 @@ end
 
 -- Input handling
 function key_handler()
-    local key = keys:getkey()
+   -- Process ALL keys in the buffer until getkey returns nil
     local handled = false
-    if state == "menu" then
-        if key == KEY.SET then
-            state = "processing"
-            display.clear()
-            display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
-            display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
-            display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
-            task.yield(100)
+    while true do
+        local key = keys:getkey()
+        if key == nil then break end  -- Exit when no more keys
+        if state == "menu" then
+            if key == KEY.SET then
+                state = "processing"
+                display.clear()
+                display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+                display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
+                display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
+                task.yield(100)
 
-            capture_and_detect_edges()
+                capture_and_detect_edges()
 
-            px, py, vx, vy = 80, 300, 0, 0
-            state = "playing"
-            running = true
-            draw_level()
-            prev_px = px
-            prev_py = py
-            return true
+                px, py, vx, vy = 80, 300, 0, 0
+                state = "playing"
+                running = true
+                draw_level()
+                prev_px = px
+                prev_py = py
+                return true
 
-        elseif key == KEY.INFO then
-            create_demo_level()
-            px, py, vx, vy = 80, 300, 0, 0
-            state = "playing"
-            running = true
-            draw_level()
-            prev_px = px
-            prev_py = py
-            return true
-        end
-
-    elseif state == "playing" then
-        if key == KEY.LEFT then
-            if on_ground then
-                vx = -5  -- Full control on ground
-            else
-                vx = vx - 1.5  -- Reduced air control via acceleration
-                if vx < -5 then vx = -5 end
+            elseif key == KEY.INFO then
+                create_demo_level()
+                px, py, vx, vy = 80, 300, 0, 0
+                state = "playing"
+                running = true
+                draw_level()
+                prev_px = px
+                prev_py = py
+                return true
             end
-            handled = true
-        end
-        if key == KEY.RIGHT then
-            if on_ground then
-                vx = 5  -- Full control on ground
-            else
-                vx = vx + 1.5  -- Reduced air control via acceleration
-                if vx > 5 then vx = 5 end
+
+        elseif state == "playing" then
+            if key == KEY.LEFT then
+                if on_ground then
+                    vx = -5  -- Full control on ground
+                else
+                    vx = vx - 1.5  -- Reduced air control via acceleration
+                    if vx < -5 then vx = -5 end
+                end
+                handled = true
             end
-            handled = true
-        end
-        if key == KEY.UP or key == KEY.SET then
-            if jumps_remaining > 0 then
-                vy = -11
-                jumps_remaining = jumps_remaining - 1
+            if key == KEY.RIGHT then
+                if on_ground then
+                    vx = 5  -- Full control on ground
+                else
+                    vx = vx + 1.5  -- Reduced air control via acceleration
+                    if vx > 5 then vx = 5 end
+                end
+                handled = true
             end
-            handled = true
-        end
-        if key == KEY.MENU then
-            running = false
-            state = "menu"
-            handled = true
+            if key == KEY.UP or key == KEY.SET then
+                if jumps_remaining > 0 then
+                    vy = -11
+                    jumps_remaining = jumps_remaining - 1
+                end
+                handled = true
+            end
+            if key == KEY.MENU then
+                running = false
+                state = "menu"
+                handled = true
+            end
         end
     end
-
     return handled
 end
 
