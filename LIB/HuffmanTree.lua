@@ -15,7 +15,7 @@ function HuffmanTree:AddCode(Code, Bits, Value)
     local CurrentTable = self.Root
 
     for i = 1, Bits, 1 do
-        local Bit = bit32.band(bit32.rshift(Code, Bits - i), 1)
+        local Bit = (Code >> (Bits - i)) & 1
 
         if (CurrentTable[Bit] == nil) then
             CurrentTable[Bit] = {}
@@ -35,7 +35,7 @@ function HuffmanTree:Index(Code, Bits)
     local CurrentTable = self.Root
 
     for i = 1, Bits, 1 do
-        CurrentTable = CurrentTable[bit32.band(bit32.rshift(Code, Bits - i), 1)]
+        CurrentTable = CurrentTable[(Code >> (Bits - i)) & 1]
     end
 
     return CurrentTable.Value

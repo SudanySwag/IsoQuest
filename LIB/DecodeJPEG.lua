@@ -80,7 +80,7 @@ function YCbCrToRGB(ImageInfo)
 
 	local Pixels = ImageInfo.Pixels
 
-	local Offset = ImageInfo.SamplePrecision > 0 and bit32.lshift(1, (ImageInfo.SamplePrecision - 1)) or 0
+	local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
 
 	local Max = Offset * 2 - 1
 
@@ -224,7 +224,7 @@ function ReadHuffmanTable(Buff, ImageInfo)
 
 			Length = Length - CodeLengths[i]
 
-			CurrentCode = bit32.lshift(CurrentCode, 1)
+			CurrentCode = CurrentCode << 1
 
 		end
 
@@ -436,7 +436,7 @@ function Extend(V, T) -- Extend function as defined in the Jpeg spec (ITU T.81)
 
 	if (T == 0) then return 0 end
 
-	return V < bit32.lshift(1, (T - 1)) and V - bit32.lshift(1, T) + 1 or V
+	return V < (1 << (T - 1)) and V - (1 << T) + 1 or V
 
 end
 
@@ -636,7 +636,7 @@ function ReadSpectralScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantParam
 
 
 
-					BlockData[K] = BlockData[K] + DIFF * bit32.lshift(1, Al)
+					BlockData[K] = BlockData[K] + DIFF * (1 << Al)
 
 					K = K + 1
 
@@ -648,9 +648,9 @@ function ReadSpectralScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantParam
 
 					local RS = IndexHuffmanTree(ACHuffmanTree, Buff)
 
-					local LowerNibble = bit32.band(RS, 0xF)
+					local LowerNibble = RS & 0xF
 
-					local HigherNibble = bit32.rshift(RS, 4)
+					local HigherNibble = RS >> 4
 
 
 
@@ -662,7 +662,7 @@ function ReadSpectralScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantParam
 
 						else
 
-							EndOfBandRun = bit32.lshift(1, HigherNibble) + Buff:ReadBits(HigherNibble) - 1
+							EndOfBandRun = (1 << HigherNibble) + Buff:ReadBits(HigherNibble) - 1
 
 							break
 
@@ -672,7 +672,7 @@ function ReadSpectralScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantParam
 
 						K = K + HigherNibble
 
-						BlockData[K] = BlockData[K] + Extend(Buff:ReadBits(LowerNibble), LowerNibble) * bit32.lshift(1, Al)
+						BlockData[K] = BlockData[K] + Extend(Buff:ReadBits(LowerNibble), LowerNibble) * (1 << Al)
 
 						K = K + 1
 
@@ -740,7 +740,7 @@ function ReadRefinementScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantPar
 
 	local RestartInterval = ImageInfo.RestartInterval
 
-	local Positive = bit32.lshift(1, Al)
+	local Positive = 1 << Al
 
 	local Negative = -1 * Positive
 
@@ -864,9 +864,9 @@ function ReadRefinementScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantPar
 
 					local RS = IndexHuffmanTree(ACHuffmanTree, Buff)
 
-					local LowerNibble = bit32.band(RS, 0xF)
+					local LowerNibble = RS & 0xF
 
-					local HigherNibble = bit32.rshift(RS, 4)
+					local HigherNibble = RS >> 4
 
 
 
@@ -898,7 +898,7 @@ function ReadRefinementScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantPar
 
 						else
 
-							EndOfBandRun = bit32.lshift(1, HigherNibble) + Buff:ReadBits(HigherNibble)
+							EndOfBandRun = (1 << HigherNibble) + Buff:ReadBits(HigherNibble)
 
 							break
 
@@ -936,7 +936,7 @@ function ReadRefinementScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantPar
 
 
 
-						BlockData[K] = BlockData[K] + Sign * bit32.lshift(1, Al)
+						BlockData[K] = BlockData[K] + Sign * (1 << Al)
 
 						K = K + 1
 
@@ -952,7 +952,7 @@ function ReadRefinementScan(Buff, Ss, Se, Al, Ah, ComponantsInScan, ComponantPar
 
 						if (BlockData[K] ~= 0) then
 
-							BlockData[K] = BlockData[K] + bit32.lshift(Buff:ReadBit(), Al) * (BlockData[K] < 0 and -1 or 1)
+							BlockData[K] = BlockData[K] + (Buff:ReadBit() << Al) * (BlockData[K] < 0 and -1 or 1)
 
 						end
 
@@ -1214,7 +1214,7 @@ function TransformBlocks(ImageInfo)
 
 
 
-				local Offset = ImageInfo.SamplePrecision > 0 and bit32.lshift(1, (ImageInfo.SamplePrecision - 1)) or 0
+				local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
 
 				for v = 1, 64, 1 do
 

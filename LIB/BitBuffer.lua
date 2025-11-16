@@ -34,8 +34,8 @@ function BitBuffer:ReadBit()
         self.CurrentByte = NextByte
     end
 
-    local Bit = bit32.band(bit32.rshift(self.CurrentByte, 7 - self.Bit), 1)
-    self.Bit = bit32.band(self.Bit + 1, 0x7)
+    local Bit = (self.CurrentByte >> (7 - self.Bit)) & 1
+    self.Bit = (self.Bit + 1) & 0x7
 
     return Bit
 end
@@ -44,7 +44,7 @@ function BitBuffer:ReadBits(NumBits)
     local Bits = 0
 
     for i = 1, NumBits, 1 do
-        Bits = bit32.bor((bit32.lshift(Bits, 1)), self:ReadBit())
+        Bits = (Bits << 1) | self:ReadBit()
     end
 
     return Bits
@@ -60,7 +60,7 @@ function BitBuffer:ReadBytes(NumBytes)
     for i = 1, NumBytes, 1 do
         self.ByteIndex = self.ByteIndex + 1
         self.CurrentByte = string.unpack(">I1", self.Bytes, self.ByteIndex)
-        Bytes = bit32.bor(bit32.lshift(Bytes, 8), self.CurrentByte)
+        Bytes = (Bytes << 8) | self.CurrentByte
     end
 
     return Bytes
