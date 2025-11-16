@@ -1193,8 +1193,13 @@ function DecodeJpeg(source, block_callback)
         end
     end
 
-    -- STREAMING: Process blocks with callback instead of storing pixels
-    TransformBlocksStreaming(ImageInfo, block_callback)
+    -- Use streaming transform if callback provided
+    if block_callback then
+        TransformBlocksStreaming(ImageInfo, block_callback)
+    else
+        -- Fallback: store all pixels (memory intensive)
+        TransformBlocks(ImageInfo)
+    end
 
     return ImageInfo
 end
