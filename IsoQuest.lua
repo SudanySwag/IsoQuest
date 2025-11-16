@@ -1,14 +1,5 @@
---[[IsoQuest
-]]
-
 --[[
-============================================
-PHOTO PLATFORMER
-============================================
-
-CONTROLS:
-  Menu: SET = Capture, INFO = Demo
-  Game: Arrows = Move, UP/SET = Jump, MENU = Exit
+IsoQuest
 ]]
 
 require("keys")
@@ -140,11 +131,10 @@ function capture_and_detect_edges()
     
     if camera and camera.shoot then
         camera.shoot()
-        camera.wait()  -- Wait for capture to complete
+        camera.wait()
         
-        -- Get path to most recent image
         if dryos.sd_card then
-            image_path = dryos.sd_card:image_path(0)  -- 0 = most recent
+            image_path = dryos.sd_card:image_path(0)
         elseif dryos.cf_card then
             image_path = dryos.cf_card:image_path(0)
         else
@@ -161,11 +151,9 @@ function capture_and_detect_edges()
     end
 
     print("Reading image file...")
-    
-    -- Read JPEG file as binary
     local file = io.open(image_path, "rb")
     if not file then
-        print("Failed to open image file!")
+        print("Failed to open image!")
         create_demo_level()
         return true
     end
@@ -396,7 +384,6 @@ function key_handler()
                 prev_px = px
                 prev_py = py
                 return true
-
             elseif key == KEY.INFO then
                 create_demo_level()
                 px, py, vx, vy = 80, 300, 0, 0
