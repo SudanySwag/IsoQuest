@@ -230,45 +230,6 @@ function ReadJFIFHeader(Buff)
 end
 
 
-
-function ReadFrame(Buff, ImageInfo)
-    local Length = Buff:ReadBytes(2)
-    local Precision = Buff:ReadBytes(1)
-
-    ImageInfo.SamplePrecision = Precision
-    ImageInfo.Y = Buff:ReadBytes(2)
-    ImageInfo.X = Buff:ReadBytes(2)
-    ImageInfo.HMax = 1
-    ImageInfo.VMax = 1
-
-    local ComponantsInFrame = Buff:ReadBytes(1)
-
-    for i = 1, ComponantsInFrame, 1 do
-        local Identifier = Buff:ReadBytes(1)
-
-        local Componant = {
-            HorizontalSamplingFactor = Buff:ReadBits(4),
-            VerticalSamplingFactor = Buff:ReadBits(4),
-            QuantizationTableDestination = Buff:ReadBytes(1)
-        }
-
-        if (Componant.HorizontalSamplingFactor > ImageInfo.HMax) then
-            ImageInfo.HMax = Componant.HorizontalSamplingFactor
-        end
-
-        if (Componant.VerticalSamplingFactor > ImageInfo.VMax) then
-            ImageInfo.VMax = Componant.VerticalSamplingFactor
-        end
-
-        ImageInfo.ComponantsInfo[Identifier] = Componant
-    end
-
-    print("Size:", ImageInfo.X, ImageInfo.Y, ComponantsInFrame)
-end
-
-
-
-
 function IndexHuffmanTree(Tree, Buff)
 
 	local Current = Tree.Root
@@ -309,7 +270,7 @@ function ScanDimensions(ComponantsInScan, ComponantParameters, ImageInfo)
 
 	for i = 1, ComponantsInScan, 1 do
 
-		local ComponantParams = ComponantParameters[1]
+		local ComponantParams = ComponantParameters[i]
 
 		local ComponantInfo = ImageInfo.ComponantsInfo[ComponantParams.ScanComponantIndex]
 
