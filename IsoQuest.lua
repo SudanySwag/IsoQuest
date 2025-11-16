@@ -26,10 +26,35 @@ local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
 local cam_x = 0
-local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
+local jumps_remaining = 2
 
 -- Previous player position for erasing
 local prev_px, prev_py = 100, 200
+
+-- Load custom images
+local menu_image = nil
+local sprite_image = nil
+local TRANSPARENT_KEY = rgb(255, 0, 255)  -- Magenta as transparent color
+
+function load_custom_images()
+    -- Try to load menu background (BMP preferred for transparency support)
+    local menu_path = "ML/SCRIPTS/menu.bmp"
+    if io.open(menu_path, "rb") then
+        menu_image = menu_path
+        print("Menu image loaded: " .. menu_path)
+    else
+        print("Menu image not found, using default")
+    end
+    
+    -- Try to load sprite (BMP preferred for transparency support)
+    local sprite_path = "ML/SCRIPTS/sprite.bmp"
+    if io.open(sprite_path, "rb") then
+        sprite_image = sprite_path
+        print("Sprite image loaded: " .. sprite_path)
+    else
+        print("Sprite image not found, using default")
+    end
+end
 
 -- CUSTOM RGB COLORS
 local function rgb(r, g, b)
@@ -206,6 +231,7 @@ function capture_and_detect_edges()
     print("Level generated!")
     return true
 end
+
 -- Demo level
 function create_demo_level()
     console.show()
@@ -346,11 +372,17 @@ function draw_player()
         end
     end
 
-    -- Draw player at new position (like pong draws ball at new position)
-    display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
-    display.rect(px - player_size/2, py - player_size/2,
-                player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
+    -- Draw player at new position
+    if sprite_image then
+        -- Use custom sprite (centered on player position)
+        display.load(sprite_image, px - player_size/2, py - player_size/2, player_size, player_size)
+    else
+        -- Fallback to colored rectangle
+        display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
+                    player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
+        display.rect(px - player_size/2, py - player_size/2,
+                    player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
+    end
 
     -- Store position for next frame (like pong stores prev_ball_x/y)
     prev_px = px
@@ -360,22 +392,31 @@ end
 -- Menu
 function draw_menu()
     display.clear()
-    display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+    
+    if menu_image then
+        -- Draw sky background
+        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+        -- Display custom menu image (replaces all text and UI)
+        display.load(menu_image, 0, 0)
+    else
+        -- Fallback to original menu with all text
+        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
 
-    display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
-    display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
+        display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
+        display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
 
-    local box_x, box_y = 180, 170
-    local box_w, box_h = 360, 100
-    display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
+        local box_x, box_y = 180, 170
+        local box_w, box_h = 360, 100
+        display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
 
-    display.print("1. Draw level on paper", 200, 180, FONT.SMALL, COLOR_TEXT)
-    display.print("2. Point camera at it", 200, 200, FONT.SMALL, COLOR_TEXT)
-    display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
-    display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
+        display.print("1. Draw level on paper", 200, 180, FONT.SMALL, COLOR_TEXT)
+        display.print("2. Point camera at it", 200, 200, FONT.SMALL, COLOR_TEXT)
+        display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
+        display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
 
-    display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
-    display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
+        display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
+        display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
+    end
 end
 
 -- Game loop
@@ -478,6 +519,9 @@ function main()
 
     sleep(0.5)
     display.clear()
+
+    -- Load custom images
+    load_custom_images()
 
     -- Initialize
     print("========================")
