@@ -1412,9 +1412,9 @@ function DecodeJpeg(BString)
 
 
 
-	TransformBlocks(ImageInfo)
+	TransformBlocksDownsampled(ImageInfo, 4)
 
-	YCbCrToRGB(ImageInfo)
+	YCbCrToGrayscale(ImageInfo)
 
 	
 
