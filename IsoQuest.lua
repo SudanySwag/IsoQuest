@@ -31,23 +31,27 @@ local COLOR_TEXT = rgb(255, 255, 255)
 local COLOR_MENU_BG = rgb(50, 50, 50)
 local COLOR_GROUND = rgb(101, 67, 33)
 
--- Packed level storage
+local level_mutable = {}
+
 function init_level()
     for y = 1, ROWS do
-        level[y] = string.rep("\0", COLS)
+        level_mutable[y] = {}
+        for x = 1, COLS do
+            level_mutable[y][x] = 0
+        end
     end
 end
 
-local function set_tile(x, y, val)
+function set_tile(x, y, val)
     if y < 1 or y > ROWS or x < 1 or x > COLS then return end
-    local row = level[y]
-    level[y] = row:sub(1, x-1) .. (val == 1 and "\1" or "\0") .. row:sub(x+1)
+    level_mutable[y][x] = val
 end
 
-local function get_tile(x, y)
+function get_tile(x, y)
     if y < 1 or y > ROWS or x < 1 or x > COLS then return 0 end
-    return level[y]:byte(x) or 0
+    return level_mutable[y][x]
 end
+
 
 -- STREAMING EDGE DETECTION
 -- This accumulates edge statistics without storing full pixels
@@ -157,6 +161,7 @@ function capture_and_detect_edges()
         create_demo_level()
         return true
     end
+    file:setvbuf("no")
     
     print("Streaming decode...")
     print("This may take 30-60 seconds...")

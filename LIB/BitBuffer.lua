@@ -1,7 +1,7 @@
 local BitBuffer = {
     File = nil,           -- File handle instead of complete data
     Buffer = "",          -- Small read buffer (4-8KB)
-    BufferSize = 8192,    -- 8KB buffer size
+    BufferSize = 512,    -- 8KB buffer size
     BufferPos = 1,        -- Current position in buffer
     TotalBytesRead = 0,   -- Track total bytes read from file
     Bit = 0,
@@ -16,7 +16,7 @@ function BitBuffer.NewFromFile(file_handle, buffer_size)
     local Buffer = setmetatable({}, BitBuffer)
     
     Buffer.File = file_handle
-    Buffer.BufferSize = buffer_size or 8192  -- Default 8KB
+    Buffer.BufferSize = buffer_size or 512  -- Default 8KB
     Buffer.Buffer = ""
     Buffer.BufferPos = 1
     Buffer.TotalBytesRead = 0
