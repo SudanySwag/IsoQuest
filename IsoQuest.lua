@@ -158,16 +158,6 @@ function capture_and_detect_edges()
         return true
     end
     
-    local jpeg_binary = file:read("*a")
-    file:close()
-    
-    if not jpeg_binary or #jpeg_binary == 0 then
-        print("File is empty!")
-        create_demo_level()
-        return true
-    end
-    
-    print("File size: " .. #jpeg_binary .. " bytes")
     print("Streaming decode...")
     print("This may take 30-60 seconds...")
     
@@ -182,9 +172,10 @@ function capture_and_detect_edges()
     local success, Info = pcall(function()
         return DecodeJpeg(jpeg_binary, process_block_for_edges)
     end)
+  
     
     -- Free JPEG data immediately
-    jpeg_binary = nil
+    file:close()
     collectgarbage("collect")
     
     if not success then
