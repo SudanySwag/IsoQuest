@@ -12,6 +12,7 @@ CONTROLS:
 ]]
 
 require("keys")
+local DecodeJpeg = require("DecodeJpeg") 
 
 -- Config
 local W, H = 720, 480
@@ -67,22 +68,86 @@ function capture_and_detect_edges()
     console.show()
     print("Capturing image...")
 
+    local image_path
+    
     if camera and camera.shoot then
         camera.shoot()
-        task.yield(1000)  -- Wait for capture to complete
+        camera.wait()  -- Wait for capture to complete
+        task.yield(1000)
+        
+        -- Get path to most recent image
+        if dryos.sd_card then
+            image_path = dryos.sd_card:image_path(0)  -- 0 = most recent
+        elseif dryos.cf_card then
+            image_path = dryos.cf_card:image_path(0)
+        else
+            print("No card found!")
+            create_demo_level()
+            return true
+        end
+        
+        print("Image: " .. image_path)
     else
         print("Camera not available - using demo")
         create_demo_level()
         return true
     end
 
+    print("Reading image file...")
+    
+    -- Read JPEG file as binary
+    local file = io.open(image_path, "rb")
+    if not file then
+        print("Failed to open image file!")
+        create_demo_level()
+        return true
+    end
+    
+    local jpeg_binary = file:read("*a")
+    file:close()
+    
+    if not jpeg_binary or #jpeg_binary == 0 then
+        print("File is empty!")
+        create_demo_level()
+        return true
+    end
+    
+    print("File size: " .. #jpeg_binary .. " bytes")
+    print("Decoding JPEG...")
+    print("This may take 30-60 seconds...")
+    
+    -- Decode JPEG with error handling
+    local success, Info = pcall(DecodeJpeg, jpeg_binary)
+    
+    if not success then
+        print("JPEG decode failed: " .. tostring(Info))
+        create_demo_level()
+        return true
+    end
+    
+    print("Decoded: " .. Info.X .. "x" .. Info.Y)
     print("Analyzing edges...")
-    print("Please wait 10-30 seconds...")
 
     init_level()
 
     local samples = 2
-    local threshold = 30  -- Adjusted threshold for real pixel data
+    local threshold = 30
+    local img_width = Info.X
+    local img_height = Info.Y
+
+    -- Helper function to get pixel brightness
+    local function get_brightness(x, y)
+        -- Convert 2D coordinates to 1D index
+        local pixel_index = y * img_width + x + 1
+        
+        -- Get RGB values from Pixels array
+        local r = Info.Pixels[1][pixel_index] or 0
+        local g = Info.Pixels[2][pixel_index] or 0
+        local b = Info.Pixels[3][pixel_index] or 0
+        
+        -- Calculate brightness
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    end
 
     for ty = 1, ROWS do
         for tx = 1, COLS do
@@ -91,26 +156,19 @@ function capture_and_detect_edges()
 
             for sy = 0, samples - 1 do
                 for sx = 0, samples - 1 do
-                    local px = (tx - 1) * TILE + sx * (TILE / samples)
-                    local py = (ty - 1) * TILE + sy * (TILE / samples)
-
-                    -- Read actual pixel color from display buffer
-                    local color = display.pixel(px, py)
+                    -- Map game coordinates to image coordinates
+                    local img_x = math.floor((tx - 1) * TILE + sx * (TILE / samples)) * img_width / W
+                    local img_y = math.floor((ty - 1) * TILE + sy * (TILE / samples)) * img_height / H
                     
-                    -- Convert color to brightness (Y component approximation)
-                    -- Extract RGB from color value
-                    local r = math.floor(color / 65536) % 256
-                    local g = math.floor(color / 256) % 256
-                    local b = color % 256
-                    local brightness = 0.299 * r + 0.587 * g + 0.114 * b
+                    -- Clamp to image bounds
+                    img_x = math.max(0, math.min(img_x, img_width - 1))
+                    img_y = math.max(0, math.min(img_y, img_height - 1))
+                    
+                    local brightness = get_brightness(img_x, img_y)
                     
                     -- Sample neighbor pixel
-                    local neighbor_x = math.min(px + 3, W - 1)
-                    local neighbor_color = display.pixel(neighbor_x, py)
-                    local nr = math.floor(neighbor_color / 65536) % 256
-                    local ng = math.floor(neighbor_color / 256) % 256
-                    local nb = neighbor_color % 256
-                    local neighbor_brightness = 0.299 * nr + 0.587 * ng + 0.114 * nb
+                    local neighbor_x = math.min(img_x + 3, img_width - 1)
+                    local neighbor_brightness = get_brightness(neighbor_x, img_y)
 
                     -- Edge detection: high gradient = edge
                     if math.abs(brightness - neighbor_brightness) > threshold then
@@ -120,7 +178,7 @@ function capture_and_detect_edges()
                 end
             end
 
-            -- If enough edges detected in tile, mark as platform
+            -- If enough edges detected, mark as platform
             if edge_pixels / total > 0.15 then
                 level[ty][tx] = 1
             end
@@ -128,7 +186,7 @@ function capture_and_detect_edges()
 
         if ty % 5 == 0 then
             print(math.floor(ty/ROWS*100) .. "%")
-            task.yield(10)  -- Increased yield for processing time
+            task.yield(10)
         end
     end
 
@@ -147,11 +205,9 @@ function capture_and_detect_edges()
         end
     end
 
-    camera.gui.play = true
     print("Level generated!")
     return true
 end
-
 -- Demo level
 function create_demo_level()
     console.show()
