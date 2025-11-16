@@ -75,85 +75,6 @@ local ZigZag = {
 }
 
 
--- Modify YCbCrToRGB to convert to grayscale only
-function YCbCrToGrayscale(ImageInfo)
-    local Pixels = ImageInfo.Pixels
-    local Y_channel = Pixels[1]  -- Luminance only
-    
-    -- Discard color channels immediately
-    Pixels[2] = nil
-    Pixels[3] = nil
-    collectgarbage("collect")
-    
-    -- Keep only Y channel (brightness)
-    ImageInfo.Pixels = {Y_channel}
-end
-
-
-function YCbCrToRGB(ImageInfo)
-
-	local Pixels = ImageInfo.Pixels
-
-	local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
-
-	local Max = Offset * 2 - 1
-
-
-
-	local function Clamp(x)
-
-		if (x > Max) then return Max end
-
-		if (x < 0) then return 0 end
-
-		return x
-
-	end
-
-
-
-	local Index = 1
-
-
-
-	for i = 1, ImageInfo.Y, 1 do
-
-		for j = 1, ImageInfo.X, 1 do
-
-			local y = Pixels[1][Index]
-
-            local Cb = Pixels[2][Index] - Offset
-
-            local Cr = Pixels[3][Index] - Offset
-
-
-
-            local R = Clamp(y + 1.402 * Cr)
-
-            local G = Clamp(y - 0.34414 * Cb - 0.71414 * Cr)
-
-            local B = Clamp(y + 1.772 * Cb)
-
-
-
-			Pixels[1][Index] = math.floor(R + 0.5)
-
-			Pixels[2][Index] = math.floor(G + 0.5)
-
-			Pixels[3][Index] = math.floor(B + 0.5)
-
-
-
-			Index = Index + 1
-
-		end
-
-	end
-
-end
-
-
-
 function ReadQuantizationTables(Buff, ImageInfo)
 
 	local Length = Buff:ReadBytes(2) - 2 --length bytes are counted in the length of chunk
@@ -1172,260 +1093,101 @@ function InterpretMarker(Buff, ImageInfo) --handles calling functions to decode 
 
 end
 
-function TransformBlocksDownsampled(ImageInfo, scale)
-    -- scale: 2 = half size, 4 = quarter size, 8 = eighth size
-    
+function TransformBlocksStreaming(ImageInfo, block_callback)
     local Blocks = ImageInfo.Blocks
-    local X = math.ceil(ImageInfo.X / scale)
-    local Y = math.ceil(ImageInfo.Y / scale)
-    
-    -- Resize pixel arrays for downsampled output
-    ImageInfo.X = X
-    ImageInfo.Y = Y
-    
+    local X = ImageInfo.X
+    local Y = ImageInfo.Y
+    local block_count = 0
+
     for c, info in pairs(ImageInfo.ComponantsInfo) do
         local QuantizationTable = ImageInfo.QuantizationTables[info.QuantizationTableDestination+1]
         local XScale = ImageInfo.HMax // info.HorizontalSamplingFactor
         local YScale = ImageInfo.VMax // info.VerticalSamplingFactor
-        
-        -- Process every Nth block only
-        local skip = scale
-        
-        for yb = 1, Blocks[c].Y, skip do
-            for xb = 1, Blocks[c].X, skip do
+        local SubImageX = XScale * 8
+        local SubImageY = YScale * 8
+
+        for yb = 1, Blocks[c].Y, 1 do
+            for xb = 1, Blocks[c].X, 1 do
+                -- Un-zigzag, dequantize and IDCT
                 local BlockIndex = (yb - 1) * Blocks[c].X + xb
                 local DecodedBlock = Blocks[c][BlockIndex]
                 local Block = {}
-                
+
                 for v = 1, 64, 1 do
                     Block[v] = DecodedBlock[ZigZag[v]] * QuantizationTable[ZigZag[v]]
                 end
-                
+
                 IDCT(Block)
-                
+
                 local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
-                
-                -- Only store first pixel from each 8x8 block (massive memory reduction)
-                local out_y = math.floor((yb - 1) / skip) + 1
-                local out_x = math.floor((xb - 1) / skip) + 1
-                local pixel_index = (out_y - 1) * X + out_x
-                
-                if pixel_index <= X * Y then
-                    ImageInfo.Pixels[c][pixel_index] = Block[1] + Offset
+                for v = 1, 64, 1 do
+                    Block[v] = Block[v] + Offset
                 end
-                
-                -- Free block data immediately
+
+                -- Calculate block position in image coordinates
+                local block_x = (xb - 1) * SubImageX
+                local block_y = (yb - 1) * SubImageY
+
+                -- STREAMING: Call callback immediately with block data
+                if block_callback then
+                    block_callback(Block, block_x, block_y, SubImageX, SubImageY, c)
+                end
+
+                -- Free block immediately after processing
                 Blocks[c][BlockIndex] = nil
-            end
-            
-            -- Aggressive GC every few rows
-            if yb % (skip * 4) == 0 then
-                collectgarbage("step", 200)
+                DecodedBlock = nil
+                
+                block_count = block_count + 1
+                
+                -- Aggressive garbage collection every 50 blocks
+                if block_count % 50 == 0 then
+                    collectgarbage("step", 100)
+                end
             end
         end
     end
+
+    -- Clear all block data
+    ImageInfo.Blocks = nil
+    collectgarbage("collect")
 end
 
-
-
-function TransformBlocks(ImageInfo)
-
-
-
-	local Blocks = ImageInfo.Blocks
-
-	local Pixels = ImageInfo.Pixels
-
-	local X = ImageInfo.X
-
-	local Y = ImageInfo.Y
-
-
-
-	for c, info in pairs(ImageInfo.ComponantsInfo) do
-
-		local QuantizationTable = ImageInfo.QuantizationTables[info.QuantizationTableDestination+1]
-
-		local XScale = ImageInfo.HMax // info.HorizontalSamplingFactor
-
-		local YScale = ImageInfo.VMax // info.VerticalSamplingFactor
-
-		local SubImageX = XScale * 8
-
-		local SubImageY = YScale * 8
-
-
-
-		for yb = 1, Blocks[c].Y, 1 do
-
-			for xb = 1, Blocks[c].X, 1 do
-
-				--un-zigzag, dequantize and IDCT
-
-				local BlockIndex = (yb - 1) * Blocks[c].X + xb
-
-				local DecodedBlock = Blocks[c][BlockIndex]
-
-				local Block = {}
-
-
-
-				for v = 1, 64, 1 do
-
-					Block[v] = DecodedBlock[ZigZag[v]] * QuantizationTable[ZigZag[v]]
-
-				end
-
-
-
-				IDCT(Block)
-
-
-
-				local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
-
-				for v = 1, 64, 1 do
-
-					Block[v] = Block[v] + Offset
-
-				end
-
-				--upsample and map to pixel matrix
-
-				local HorizontalEdge = math.min(SubImageY, (Y - ((yb - 1) * SubImageY)))
-
-				local VerticalEdge = math.min(SubImageX, (X - ((xb - 1) * SubImageX)))
-
-				local ImageYIndex = (yb - 1) * SubImageY * X
-
-				local ImageXIndex = (xb - 1) * SubImageX
-
-
-
-				for y = 1, HorizontalEdge, 1 do
-
-					local BlockYIndex = (y - 1) // YScale
-
-
-
-					for x = 1, VerticalEdge, 1 do
-
-						local BlockXIndex = (x - 1) // XScale
-
-
-
-						Pixels[c][ImageYIndex + ImageXIndex + 1] = Block[BlockYIndex * 8 + BlockXIndex + 1]
-
-
-
-						ImageXIndex = ImageXIndex + 1
-
-					end
-
-
-
-					ImageXIndex = ImageXIndex - VerticalEdge
-
-					ImageYIndex = ImageYIndex + X
-
-				end
-
-
-
-
-
-			end
-
-		end
-
-
-
-	end
-
-
-
+function DecodeJpeg(BString, block_callback)
+    local Buff = Buffer.New(BString)
+
+    if (Buff:ReadBytes(2) ~= 0xFF00 + SOI) then 
+        print("invalid jpg file") 
+        return nil
+    end
+
+    local ImageInfo = {
+        X = 0,
+        Y = 0,
+        QuantizationTables = {{}, {}, {}, {}},
+        DCHuffmanCodes = {{}, {}, {}, {}},
+        ACHuffmanCodes = {{}, {}, {}, {}},
+        ComponantsInfo = {},
+        HMax = 0,
+        VMax = 0,
+        SamplePrecision = 0,
+        RestartInterval = 0,
+        Blocks = {}
+    }
+
+    while (not Buff:IsEmpty()) do
+        local Byte = Buff:ReadBytes(1)
+        if (Byte == 0xFF) then
+            local R = InterpretMarker(Buff, ImageInfo)
+            if (R == -1) then
+                break
+            end
+        end
+    end
+
+    -- STREAMING: Process blocks with callback instead of storing pixels
+    TransformBlocksStreaming(ImageInfo, block_callback)
+
+    return ImageInfo
 end
-
-
-
-function DecodeJpeg(BString)
-
-	local Buff = Buffer.New(BString)
-
-
-
-	if (Buff:ReadBytes(2) ~= 0xFF00 + SOI) then print("inavlid jpg file") return end
-
-
-
-	local ImageInfo = {
-
-		X = 0,
-
-		Y = 0,
-
-		Pixels = {},
-
-		QuantizationTables = {{}, {}, {}, {}},
-
-		DCHuffmanCodes = {{}, {}, {}, {}},
-
-		ACHuffmanCodes = {{}, {}, {}, {}},
-
-		ComponantsInfo = {},
-
-		HMax = 0,
-
-		VMax = 0,
-
-		SamplePrecision = 0,
-
-		RestartInterval = 0,
-
-		Blocks = {}
-
-	}
-
-
-
-	while (not Buff:IsEmpty()) do
-
-		local Byte = Buff:ReadBytes(1)
-
-		if (Byte == 0xFF) then
-
-			local R = InterpretMarker(Buff, ImageInfo)
-
-
-
-			if (R == -1) then
-
-				break
-
-			end
-
-
-
-		end
-
-	end
-
-
-
-	TransformBlocksDownsampled(ImageInfo, 4)
-
-	YCbCrToGrayscale(ImageInfo)
-
-	
-
-	ImageInfo.Blocks = nil
-
-
-
-	return ImageInfo
-
-end
-
-
 
 return DecodeJpeg
