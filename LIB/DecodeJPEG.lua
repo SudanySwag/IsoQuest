@@ -1152,8 +1152,17 @@ function TransformBlocksStreaming(ImageInfo, block_callback)
     collectgarbage("collect")
 end
 
-function DecodeJpeg(BString, block_callback)
-    local Buff = Buffer.New(BString)
+function DecodeJpeg(source, block_callback)
+    local Buff
+    
+    -- Support both file handle and binary string
+    if type(source) == "string" then
+        -- Legacy: binary string (less memory efficient)
+        Buff = Buffer.New(source)
+    else
+        -- New: file handle (memory efficient)
+        Buff = Buffer.NewFromFile(source, 8192)  -- 8KB buffer
+    end
 
     if (Buff:ReadBytes(2) ~= 0xFF00 + SOI) then 
         print("invalid jpg file") 

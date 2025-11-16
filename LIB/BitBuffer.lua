@@ -1,32 +1,91 @@
 local BitBuffer = {
-    Bytes = "",
-    Size = 0,
-    ByteIndex = 0,
+    File = nil,           -- File handle instead of complete data
+    Buffer = "",          -- Small read buffer (4-8KB)
+    BufferSize = 8192,    -- 8KB buffer size
+    BufferPos = 1,        -- Current position in buffer
+    TotalBytesRead = 0,   -- Track total bytes read from file
+    Bit = 0,
     CurrentByte = 0,
-    Bit = 0
+    EOF = false
 }
 
 BitBuffer.__index = BitBuffer
 
-function BitBuffer.New(Data)
+-- Create buffer from file handle instead of data string
+function BitBuffer.NewFromFile(file_handle, buffer_size)
     local Buffer = setmetatable({}, BitBuffer)
-
-    Buffer.Bytes = Data
-    Buffer.Size = #Buffer.Bytes
-
+    
+    Buffer.File = file_handle
+    Buffer.BufferSize = buffer_size or 8192  -- Default 8KB
+    Buffer.Buffer = ""
+    Buffer.BufferPos = 1
+    Buffer.TotalBytesRead = 0
+    Buffer.Bit = 0
+    Buffer.CurrentByte = 0
+    Buffer.EOF = false
+    
+    -- Read first chunk
+    Buffer:RefillBuffer()
+    
     return Buffer
 end
 
-function BitBuffer:ReadBit()
+-- Refill buffer from file when needed
+function BitBuffer:RefillBuffer()
+    if not self.File or self.EOF then
+        return false
+    end
+    
+    -- Read next chunk from file
+    local chunk = self.File:read(self.BufferSize)
+    
+    if not chunk or #chunk == 0 then
+        self.EOF = true
+        self.Buffer = ""
+        return false
+    end
+    
+    self.Buffer = chunk
+    self.BufferPos = 1
+    
+    -- Optional: Force GC every few refills to keep memory low
+    if self.TotalBytesRead % (self.BufferSize * 10) == 0 then
+        collectgarbage("step", 100)
+    end
+    
+    return true
+end
 
+-- Get one byte from buffer (refill if needed)
+function BitBuffer:GetByte()
+    -- Check if we need to refill buffer
+    if self.BufferPos > #self.Buffer then
+        if not self:RefillBuffer() then
+            return nil  -- EOF
+        end
+    end
+    
+    local byte = self.Buffer:byte(self.BufferPos)
+    self.BufferPos = self.BufferPos + 1
+    self.TotalBytesRead = self.TotalBytesRead + 1
+    
+    return byte
+end
+
+function BitBuffer:ReadBit()
     if (self.Bit == 0) then
-        self.ByteIndex = self.ByteIndex + 1
         self.Bit = 0
-        local NextByte = string.unpack(">I1", self.Bytes, self.ByteIndex)
+        local NextByte = self:GetByte()
+        
+        if not NextByte then
+            error("Unexpected end of file", 1)
+        end
 
         if (NextByte == 0x00 and self.CurrentByte == 0xFF) then
-            self.ByteIndex = self.ByteIndex + 1
-            NextByte = string.unpack(">I1", self.Bytes, self.ByteIndex)
+            NextByte = self:GetByte()
+            if not NextByte then
+                error("Unexpected end of file", 1)
+            end
         elseif (self.CurrentByte == 0xFF) then
             error("Unexpected marker in entropy stream: "..tostring(self.CurrentByte), 1)
         end
@@ -58,8 +117,11 @@ function BitBuffer:ReadBytes(NumBytes)
     local Bytes = 0
 
     for i = 1, NumBytes, 1 do
-        self.ByteIndex = self.ByteIndex + 1
-        self.CurrentByte = string.unpack(">I1", self.Bytes, self.ByteIndex)
+        local byte = self:GetByte()
+        if not byte then
+            error("Unexpected end of file", 1)
+        end
+        self.CurrentByte = byte
         Bytes = (Bytes << 8) | self.CurrentByte
     end
 
@@ -71,7 +133,24 @@ function BitBuffer:Align()
 end
 
 function BitBuffer:IsEmpty()
-    return self.Size <= self.ByteIndex
+    -- Check if buffer is exhausted AND file is at EOF
+    return self.EOF and self.BufferPos > #self.Buffer
+end
+
+-- Keep old constructor for compatibility (loads entire data)
+function BitBuffer.New(Data)
+    local Buffer = setmetatable({}, BitBuffer)
+    
+    -- Convert to buffered approach internally
+    Buffer.Buffer = Data
+    Buffer.BufferPos = 1
+    Buffer.File = nil
+    Buffer.EOF = true  -- No file, so "EOF" after buffer is consumed
+    Buffer.Bit = 0
+    Buffer.CurrentByte = 0
+    Buffer.TotalBytesRead = 0
+    
+    return Buffer
 end
 
 return BitBuffer
