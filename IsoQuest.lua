@@ -183,11 +183,24 @@ function capture_and_detect_edges()
     end
     
     print("File size: " .. #jpeg_binary .. " bytes")
-    print("Decoding JPEG...")
+    print("Streaming decode...")
     print("This may take 30-60 seconds...")
     
-    -- Decode JPEG with error handling
-    local success, Info = pcall(DecodeJpeg, jpeg_binary)
+    -- Initialize level and edge accumulator
+    init_level()
+    init_edge_accumulator()
+    
+    -- Force GC before decode
+    collectgarbage("collect")
+    
+    -- STREAMING DECODE: Blocks are processed as they're decoded
+    local success, Info = pcall(function()
+        return DecodeJpeg(jpeg_binary, process_block_for_edges)
+    end)
+    
+    -- Free JPEG data immediately
+    jpeg_binary = nil
+    collectgarbage("collect")
     
     if not success then
         print("JPEG decode failed: " .. tostring(Info))
@@ -196,180 +209,121 @@ function capture_and_detect_edges()
     end
     
     print("Decoded: " .. Info.X .. "x" .. Info.Y)
-    print("Analyzing edges...")
-
-    init_level()
-
-    local samples = 2
-    local threshold = 30
-    local img_width = Info.X
-    local img_height = Info.Y
-
-    for ty = 1, ROWS do
-        for tx = 1, COLS do
-            local edge_pixels = 0
-            local total = 0
-
-            for sy = 0, samples - 1 do
-                for sx = 0, samples - 1 do
-                    -- Map game coordinates to image coordinates
-                    local img_x = math.floor((tx - 1) * TILE + sx * (TILE / samples)) * img_width / W
-                    local img_y = math.floor((ty - 1) * TILE + sy * (TILE / samples)) * img_height / H
-                    
-                    -- Clamp to image bounds
-                    img_x = math.max(0, math.min(img_x, img_width - 1))
-                    img_y = math.max(0, math.min(img_y, img_height - 1))
-                    
-                    local pixel_index = y * img_width + x + 1
-
-                    local brightness = Info.Pixels[1][pixel_index] or 0
-                    
-                    -- Sample neighbor pixel
-                    local neighbor_x = math.min(img_x + 3, img_width - 1)
-                    local neighbor_pixel_index = y * img_width + neighbor_x + 1
-                    local neighbor_brightness = Info.Pixels[1][neighbor_pixel_index] or 0
-
-                    -- Edge detection: high gradient = edge
-                    if math.abs(brightness - neighbor_brightness) > threshold then
-                        edge_pixels = edge_pixels + 1
-                    end
-                    total = total + 1
-                end
-            end
-
-            -- If enough edges detected, mark as platform
-            if edge_pixels / total > 0.15 then
-                level[ty][tx] = 1
-            end
-        end
-
-        if ty % 5 == 0 then
-            print(math.floor(ty/ROWS*100) .. "%")
-            task.yield(10)
-        end
-    end
-
+    print("Finalizing edges...")
+    
+    img_width = Info.X
+    img_height = Info.Y
+    
+    -- Convert edge accumulator to level tiles
+    finalize_edge_detection()
+    
+    -- Free image info
+    Info = nil
+    collectgarbage("collect")
+    
     -- Add ground
     for x = 1, COLS do
-        level[ROWS][x] = 1
-        level[ROWS-1][x] = 1
+        set_tile(x, ROWS, 1)
+        set_tile(x, ROWS-1, 1)
     end
 
-    -- Thicken platforms for better gameplay
+    -- Thicken platforms
     for ty = 1, ROWS - 2 do
         for tx = 1, COLS do
-            if level[ty][tx] == 1 and level[ty+1][tx] == 0 then
-                level[ty+1][tx] = 1
+            if get_tile(tx, ty) == 1 and get_tile(tx, ty+1) == 0 then
+                set_tile(tx, ty+1, 1)
             end
         end
+    end
+
+    -- Add walls
+    for y = 1, ROWS do
+        set_tile(1, y, 1)
+        set_tile(2, y, 1)
+        set_tile(COLS, y, 1)
+        set_tile(COLS-1, y, 1)
     end
 
     print("Level generated!")
+    collectgarbage("collect")
     return true
 end
--- Demo level
+
+-- [Keep all other functions the same: create_demo_level, is_solid, 
+--  update_player, draw_level, draw_player, draw_menu, key_handler, main]
+
 function create_demo_level()
     console.show()
     print("Loading demo level...")
-
     init_level()
-
-    -- Ground
     for x = 1, COLS do
-        level[ROWS][x] = 1
-        level[ROWS-1][x] = 1
+        set_tile(x, ROWS, 1)
+        set_tile(x, ROWS-1, 1)
     end
-
-    -- Platforms
-    for x = 8, 15 do level[22][x] = 1 level[23][x] = 1 end
-    for x = 18, 25 do level[18][x] = 1 level[19][x] = 1 end
-    for x = 28, 35 do level[15][x] = 1 level[16][x] = 1 end
-    for x = 10, 17 do level[12][x] = 1 level[13][x] = 1 end
-
-    -- Walls
+    for x = 8, 15 do set_tile(x, 22, 1) set_tile(x, 23, 1) end
+    for x = 18, 25 do set_tile(x, 18, 1) set_tile(x, 19, 1) end
+    for x = 28, 35 do set_tile(x, 15, 1) set_tile(x, 16, 1) end
+    for x = 10, 17 do set_tile(x, 12, 1) set_tile(x, 13, 1) end
     for y = 1, ROWS do
-        level[y][1] = 1
-        level[y][2] = 1
-        level[y][COLS] = 1
-        level[y][COLS-1] = 1
+        set_tile(1, y, 1)
+        set_tile(2, y, 1)
+        set_tile(COLS, y, 1)
+        set_tile(COLS-1, y, 1)
     end
-
     print("Demo ready!")
 end
 
--- Physics
 function is_solid(x, y)
     local tx = math.floor(x / TILE) + 1
     local ty = math.floor(y / TILE) + 1
     if tx < 1 or tx > COLS or ty < 1 or ty > ROWS then return true end
-    return level[ty][tx] == 1
+    return get_tile(tx, ty) == 1
 end
 
 function update_player()
     vy = vy + 0.8
     if vy > 15 then vy = 15 end
-    
     px = px + vx
-
-    local l = px - player_size/2
-    local r = px + player_size/2
-    local t = py - player_size/2
-    local b = py + player_size/2
-
+    local l, r = px - player_size/2, px + player_size/2
+    local t, b = py - player_size/2, py + player_size/2
     if is_solid(l, py) or is_solid(r, py) then
         px = px - vx
         vx = 0
     end
-
     py = py + vy
     on_ground = false
-
-    l = px - player_size/2
-    r = px + player_size/2
-    t = py - player_size/2
-    b = py + player_size/2
-
+    l, r = px - player_size/2, px + player_size/2
+    t, b = py - player_size/2, py + player_size/2
     if is_solid(l, b) or is_solid(r, b) then
         if vy > 0 then
             py = math.floor(b / TILE) * TILE - player_size/2
             vy = 0
             on_ground = true
-            jumps_remaining = 2  -- Reset jumps when landing
+            jumps_remaining = 2
         end
     end
-
     if is_solid(l, t) or is_solid(r, t) then
         if vy < 0 then
             py = (math.floor(t / TILE) + 1) * TILE + player_size/2
             vy = 0
         end
     end
-
     if on_ground then
         vx = vx * 0.7
         if math.abs(vx) < 0.1 then vx = 0 end
     else
-        -- Apply air friction when not on ground
         vx = vx * 0.85
     end
-
-    
-    -- Cap horizontal speed
     if vx > 6 then vx = 6 end
     if vx < -6 then vx = -6 end
 end
 
--- Draw entire background ONCE (like pong clears screen once)
 function draw_level()
     display.clear()
-    
-    -- Sky background
     display.rect(0, 0, W, H, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
-
-    -- Draw all platforms (static, never changes)
     for ty = 1, ROWS do
         for tx = 1, COLS do
-            if level[ty][tx] == 1 then
+            if get_tile(tx, ty) == 1 then
                 local sx = (tx - 1) * TILE
                 local sy = (ty - 1) * TILE
                 local color = (ty >= ROWS - 1) and COLOR_GROUND or COLOR_PLATFORM
