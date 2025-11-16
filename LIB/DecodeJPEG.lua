@@ -75,6 +75,20 @@ local ZigZag = {
 }
 
 
+-- Modify YCbCrToRGB to convert to grayscale only
+function YCbCrToGrayscale(ImageInfo)
+    local Pixels = ImageInfo.Pixels
+    local Y_channel = Pixels[1]  -- Luminance only
+    
+    -- Discard color channels immediately
+    Pixels[2] = nil
+    Pixels[3] = nil
+    collectgarbage("collect")
+    
+    -- Keep only Y channel (brightness)
+    ImageInfo.Pixels = {Y_channel}
+end
+
 
 function YCbCrToRGB(ImageInfo)
 
@@ -1156,6 +1170,60 @@ function InterpretMarker(Buff, ImageInfo) --handles calling functions to decode 
 
 
 
+end
+
+function TransformBlocksDownsampled(ImageInfo, scale)
+    -- scale: 2 = half size, 4 = quarter size, 8 = eighth size
+    
+    local Blocks = ImageInfo.Blocks
+    local X = math.ceil(ImageInfo.X / scale)
+    local Y = math.ceil(ImageInfo.Y / scale)
+    
+    -- Resize pixel arrays for downsampled output
+    ImageInfo.X = X
+    ImageInfo.Y = Y
+    
+    for c, info in pairs(ImageInfo.ComponantsInfo) do
+        local QuantizationTable = ImageInfo.QuantizationTables[info.QuantizationTableDestination+1]
+        local XScale = ImageInfo.HMax // info.HorizontalSamplingFactor
+        local YScale = ImageInfo.VMax // info.VerticalSamplingFactor
+        
+        -- Process every Nth block only
+        local skip = scale
+        
+        for yb = 1, Blocks[c].Y, skip do
+            for xb = 1, Blocks[c].X, skip do
+                local BlockIndex = (yb - 1) * Blocks[c].X + xb
+                local DecodedBlock = Blocks[c][BlockIndex]
+                local Block = {}
+                
+                for v = 1, 64, 1 do
+                    Block[v] = DecodedBlock[ZigZag[v]] * QuantizationTable[ZigZag[v]]
+                end
+                
+                IDCT(Block)
+                
+                local Offset = ImageInfo.SamplePrecision > 0 and (1 << (ImageInfo.SamplePrecision - 1)) or 0
+                
+                -- Only store first pixel from each 8x8 block (massive memory reduction)
+                local out_y = math.floor((yb - 1) / skip) + 1
+                local out_x = math.floor((xb - 1) / skip) + 1
+                local pixel_index = (out_y - 1) * X + out_x
+                
+                if pixel_index <= X * Y then
+                    ImageInfo.Pixels[c][pixel_index] = Block[1] + Offset
+                end
+                
+                -- Free block data immediately
+                Blocks[c][BlockIndex] = nil
+            end
+            
+            -- Aggressive GC every few rows
+            if yb % (skip * 4) == 0 then
+                collectgarbage("step", 200)
+            end
+        end
+    end
 end
 
 
