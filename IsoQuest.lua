@@ -357,10 +357,11 @@ end
 -- Draw entire background (static level)
 function draw_level()
     print("[ISOQUEST] draw_level()")
+    menu.close()
     display.clear()
     
     -- Sky background
-    display.rect(0, 0, W, H, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
+    display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
 
     -- Draw all platforms (static, never changes)
     for ty = 1, ROWS do
@@ -384,7 +385,7 @@ end
 function draw_player()
     -- Erase old player position
     display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
+                player_size + 2, player_size + 2, COLOR_SKY, COLOR_SKY)
 
     -- Redraw any platform tiles that were under the old player
     local prev_tile_x = math.floor(prev_px / TILE) + 1
@@ -473,7 +474,7 @@ function key_handler()
                 end
 
                                 -- Capture screenshot to valid BMP with proper headers
-                
+                menu.close()
                 display.clear()
                 lv.pause()
                 display.screenshot(bmp_path)
@@ -565,13 +566,15 @@ end
 
 function main()
     print("[ISOQUEST] main() starting up...")
-    keys:start()
-    menu.close()
-    menu.block(true)
-    console.hide()
     lv.start()
-    lv.zoom = 1.2
+    keys:start()
+    console.hide()
+    menu.block(true)
+
+    sleep(0.5)
     display.clear()
+
+    lv.zoom = 1.4
 
     -- Load custom images
     load_custom_images()
@@ -609,7 +612,6 @@ function main()
 
     -- Unreachable in practice
     menu.block(false)
-    menu.open()
     keys:stop()
 end
 
