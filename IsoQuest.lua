@@ -43,27 +43,99 @@ local COLOR_TEXT = rgb(255, 255, 255)
 local COLOR_MENU_BG = rgb(50, 50, 50)
 local COLOR_GROUND = rgb(101, 67, 33)
 
--- Fallback to constants if integers don't work
-if not pcall(function() display.rect(0,0,1,1,COLOR_SKY) end) then
-    COLOR_SKY = COLOR.BLUE
-    COLOR_PLATFORM = COLOR.BROWN or COLOR.ORANGE
-    COLOR_PLAYER = COLOR.RED
-    COLOR_TEXT = COLOR.WHITE
-    COLOR_MENU_BG = COLOR.BLACK
-    COLOR_GROUND = COLOR.BROWN or COLOR.RED
-end
-
--- Initialize level
+-- Packed level storage
 function init_level()
     for y = 1, ROWS do
-        level[y] = {}
-        for x = 1, COLS do
-            level[y][x] = 0
+        level[y] = string.rep("\0", COLS)
+    end
+end
+
+local function set_tile(x, y, val)
+    if y < 1 or y > ROWS or x < 1 or x > COLS then return end
+    local row = level[y]
+    level[y] = row:sub(1, x-1) .. (val == 1 and "\1" or "\0") .. row:sub(x+1)
+end
+
+local function get_tile(x, y)
+    if y < 1 or y > ROWS or x < 1 or x > COLS then return 0 end
+    return level[y]:byte(x) or 0
+end
+
+-- STREAMING EDGE DETECTION
+-- This accumulates edge statistics without storing full pixels
+local edge_accumulator = {}
+local img_width, img_height = 0, 0
+
+function init_edge_accumulator()
+    edge_accumulator = {}
+    for ty = 1, ROWS do
+        edge_accumulator[ty] = {}
+        for tx = 1, COLS do
+            edge_accumulator[ty][tx] = {
+                samples = 0,
+                edge_count = 0,
+                prev_brightness = nil
+            }
         end
     end
 end
 
--- Edge detection
+-- Block callback function for streaming processing
+function process_block_for_edges(block, block_x, block_y, block_w, block_h, channel)
+    -- Only process luminance channel (Y = channel 1)
+    if channel ~= 1 then return end
+    
+    -- Extract edge information from this 8x8 block
+    local threshold = 30
+    
+    -- Sample multiple points in the block
+    for by = 0, 7, 2 do  -- Sample every 2nd pixel
+        for bx = 0, 7, 2 do
+            local pixel_x = block_x + math.floor(bx * block_w / 8)
+            local pixel_y = block_y + math.floor(by * block_h / 8)
+            
+            -- Map to tile coordinates
+            local tile_x = math.floor(pixel_x / TILE) + 1
+            local tile_y = math.floor(pixel_y / TILE) + 1
+            
+            if tile_x >= 1 and tile_x <= COLS and tile_y >= 1 and tile_y <= ROWS then
+                local brightness = block[by * 8 + bx + 1]
+                local acc = edge_accumulator[tile_y][tile_x]
+                
+                -- Check for edge with previous pixel
+                if acc.prev_brightness then
+                    if math.abs(brightness - acc.prev_brightness) > threshold then
+                        acc.edge_count = acc.edge_count + 1
+                    end
+                end
+                
+                acc.samples = acc.samples + 1
+                acc.prev_brightness = brightness
+            end
+        end
+    end
+end
+
+-- Convert edge accumulator to level tiles
+function finalize_edge_detection()
+    for ty = 1, ROWS do
+        for tx = 1, COLS do
+            local acc = edge_accumulator[ty][tx]
+            if acc.samples > 0 then
+                local edge_ratio = acc.edge_count / acc.samples
+                if edge_ratio > 0.15 then  -- 15% edge threshold
+                    set_tile(tx, ty, 1)
+                end
+            end
+        end
+    end
+    
+    -- Clear accumulator to free memory
+    edge_accumulator = nil
+    collectgarbage("collect")
+end
+
+-- STREAMING CAPTURE AND DECODE
 function capture_and_detect_edges()
     print("Capturing image...")
 
