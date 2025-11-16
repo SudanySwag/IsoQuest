@@ -1,8 +1,8 @@
-local Buffer = require(script.Parent.BitBuffer)
+local Buffer = require("BitBuffer")
 
-local HuffmanTree = require(script.Parent.HuffmanTree)
+local HuffmanTree = require("HuffmanTree")
 
-local IDCT = require(script.Parent.IDCT)
+local IDCT = require("IDCT")
 
 
 
