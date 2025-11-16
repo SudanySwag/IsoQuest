@@ -45,7 +45,7 @@ function load_custom_images()
     -- Try to load menu background (BMP preferred for transparency support)
     local menu_path = "ML/SCRIPTS/menu.bmp"
     if io.open(menu_path, "rb") then
-        menu_image = menu_path
+        menu_image = display.load(menu_path)
         print("Menu image loaded: " .. menu_path)
     else
         print("Menu image not found, using default")
@@ -54,7 +54,7 @@ function load_custom_images()
     -- Try to load sprite (BMP preferred for transparency support)
     local sprite_path = "ML/SCRIPTS/sprite.bmp"
     if io.open(sprite_path, "rb") then
-        sprite_image = sprite_path
+        sprite_image = display.load(sprite_path)
         print("Sprite image loaded: " .. sprite_path)
     else
         print("Sprite image not found, using default")
@@ -375,7 +375,7 @@ function draw_player()
     -- Draw player at new position
     if sprite_image then
         -- Use custom sprite (centered on player position)
-        display.load(sprite_image, px - player_size/2, py - player_size/2, player_size, player_size)
+        sprite_image:draw(px - player_size/2, py - player_size/2, player_size, player_size)
     else
         -- Fallback to colored rectangle
         display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
@@ -397,7 +397,8 @@ function draw_menu()
         -- Draw sky background
         display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
         -- Display custom menu image (replaces all text and UI)
-        display.load(menu_image, 0, 0)
+        menu_image:draw(0,0)
+
     else
         -- Fallback to original menu with all text
         display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
@@ -443,6 +444,9 @@ function key_handler()
     while true do
         local key = keys:getkey()
         if key == nil then break end  -- Exit when no more keys
+        if key == KEY.PLAY then
+            console.show()
+        end
         if state == "menu" then
             if key == KEY.SET then
                 state = "processing"
@@ -503,9 +507,6 @@ function key_handler()
                 running = false
                 state = "load_menu"
                 handled = true
-            end
-            if key == KEY.PLAY then
-                console.show()
             end
         end
     end
