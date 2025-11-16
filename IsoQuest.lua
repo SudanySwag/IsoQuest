@@ -31,6 +31,11 @@ local jumps_remaining = 2
 -- Previous player position for erasing
 local prev_px, prev_py = 100, 200
 
+-- CUSTOM RGB COLORS (must be defined first)
+local function rgb(r, g, b)
+    return (r * 65536) + (g * 256) + b
+end
+
 -- Load custom images
 local menu_image = nil
 local sprite_image = nil
@@ -54,11 +59,6 @@ function load_custom_images()
     else
         print("Sprite image not found, using default")
     end
-end
-
--- CUSTOM RGB COLORS
-local function rgb(r, g, b)
-    return (r * 65536) + (g * 256) + b
 end
 
 local COLOR_SKY = rgb(135, 206, 235)
