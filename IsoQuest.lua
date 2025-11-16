@@ -133,20 +133,6 @@ function capture_and_detect_edges()
     local img_width = Info.X
     local img_height = Info.Y
 
-    -- Helper function to get pixel brightness
-    local function get_brightness(x, y)
-        -- Convert 2D coordinates to 1D index
-        local pixel_index = y * img_width + x + 1
-        
-        -- Get RGB values from Pixels array
-        local r = Info.Pixels[1][pixel_index] or 0
-        local g = Info.Pixels[2][pixel_index] or 0
-        local b = Info.Pixels[3][pixel_index] or 0
-        
-        -- Calculate brightness
-        return 0.299 * r + 0.587 * g + 0.114 * b
-    end
-
     for ty = 1, ROWS do
         for tx = 1, COLS do
             local edge_pixels = 0
@@ -162,11 +148,14 @@ function capture_and_detect_edges()
                     img_x = math.max(0, math.min(img_x, img_width - 1))
                     img_y = math.max(0, math.min(img_y, img_height - 1))
                     
-                    local brightness = get_brightness(img_x, img_y)
+                    local pixel_index = y * img_width + x + 1
+
+                    local brightness = Info.Pixels[1][pixel_index] or 0
                     
                     -- Sample neighbor pixel
                     local neighbor_x = math.min(img_x + 3, img_width - 1)
-                    local neighbor_brightness = get_brightness(neighbor_x, img_y)
+                    local neighbor_pixel_index = y * img_width + neighbor_x + 1
+                    local neighbor_brightness = Info.Pixels[1][neighbor_pixel_index] or 0
 
                     -- Edge detection: high gradient = edge
                     if math.abs(brightness - neighbor_brightness) > threshold then
