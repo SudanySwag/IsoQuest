@@ -147,6 +147,7 @@ function capture_and_detect_edges()
         end
     end
 
+    camera.gui.play = true
     print("Level generated!")
     return true
 end
@@ -416,6 +417,7 @@ end
 function main()
     keys:start()
     menu.block(true)
+    lv.start()
 
     sleep(0.5)
     display.clear()
