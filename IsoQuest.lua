@@ -154,6 +154,7 @@ function capture_and_detect_edges()
         return true
     end
     
+    local mem_before = collectgarbage("count")
     print("Memory before: " .. mem_before .. " KB")
   
 
