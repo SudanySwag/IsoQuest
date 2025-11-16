@@ -153,6 +153,9 @@ function capture_and_detect_edges()
         create_demo_level()
         return true
     end
+    
+    print("Memory before: " .. mem_before .. " KB")
+  
 
     print("Reading image file...")
     local file = io.open(image_path, "rb")
@@ -182,6 +185,11 @@ function capture_and_detect_edges()
     -- Free JPEG data immediately
     file:close()
     collectgarbage("collect")
+    
+        
+    local mem_after = collectgarbage("count")
+    print("Memory after open: " .. mem_after .. " KB")
+    print("Delta: " .. (mem_after - mem_before) .. " KB")
     
     if not success then
         print("JPEG decode failed: " .. tostring(Info))
