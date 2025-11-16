@@ -3,7 +3,7 @@
 
 --[[
 ============================================
-PHOTO PLATFORMER
+PHOTO PLATFORMER - DEBUG BUILD
 ============================================
 
 CONTROLS:
@@ -11,8 +11,10 @@ CONTROLS:
   Game: Arrows = Move, UP/SET = Jump, MENU = Exit
 ]]
 
+print("[ISOQUEST] Script loading...")
+
 require("keys")
-local DecodeJpeg = require("DecodeJpeg") 
+local Bitmap = require("lua-bitmap")
 
 -- Config
 local W, H = 720, 480
@@ -26,14 +28,47 @@ local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
 local cam_x = 0
-local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
+local jumps_remaining = 2
 
 -- Previous player position for erasing
 local prev_px, prev_py = 100, 200
 
--- CUSTOM RGB COLORS
+-- CUSTOM RGB COLORS (must be defined first)
 local function rgb(r, g, b)
     return (r * 65536) + (g * 256) + b
+end
+
+-- Load custom images
+local menu_image = nil
+local sprite_image = nil
+local TRANSPARENT_KEY = rgb(255, 0, 255)  -- Magenta as transparent color
+
+function load_custom_images()
+    print("[ISOQUEST] load_custom_images()")
+
+    -- Try to load menu background (BMP preferred for transparency support)
+    local menu_path = "ML/SCRIPTS/menu.bmp"
+    local f_menu = io.open(menu_path, "rb")
+    if f_menu then
+        f_menu:close()
+        print("[ISOQUEST] Menu image found: " .. menu_path)
+        menu_image = display.load(menu_path)
+        print("[ISOQUEST] Menu image loaded.")
+    else
+        print("[ISOQUEST] Menu image not found, using default")
+    end
+    
+    -- Try to load sprite (BMP preferred for transparency support)
+    local sprite_path = "ML/SCRIPTS/sprite.bmp"
+    local f_sprite = io.open(sprite_path, "rb")
+    if f_sprite then
+        f_sprite:close()
+        print("[ISOQUEST] Sprite image found: " .. sprite_path)
+        sprite_image = display.load(sprite_path)
+        print("[ISOQUEST] Sprite image loaded.")
+    else
+        print("[ISOQUEST] Sprite image not found, using default")
+    end
 end
 
 local COLOR_SKY = rgb(135, 206, 235)
@@ -45,6 +80,7 @@ local COLOR_GROUND = rgb(101, 67, 33)
 
 -- Fallback to constants if integers don't work
 if not pcall(function() display.rect(0,0,1,1,COLOR_SKY) end) then
+    print("[ISOQUEST] Using fallback COLOR constants")
     COLOR_SKY = COLOR.BLUE
     COLOR_PLATFORM = COLOR.BROWN or COLOR.ORANGE
     COLOR_PLAYER = COLOR.RED
@@ -55,6 +91,7 @@ end
 
 -- Initialize level
 function init_level()
+    print("[ISOQUEST] init_level() - clearing "..ROWS.."x"..COLS.." grid")
     for y = 1, ROWS do
         level[y] = {}
         for x = 1, COLS do
@@ -63,168 +100,136 @@ function init_level()
     end
 end
 
--- Edge detection
-function capture_and_detect_edges()
-    print("Capturing image...")
+-- threshold for pixel darkness (0 = black, 255 = white)
+local DARK_THRESHOLD = 80          
+local DARK_RATIO = 0.30            -- % of pixels in tile that must be dark
 
-    local image_path
-    
-    if camera and camera.shoot then
-        camera.shoot()
-        camera.wait()  -- Wait for capture to complete
-        
-        -- Get path to most recent image
-        if dryos.sd_card then
-            image_path = dryos.sd_card:image_path(0)  -- 0 = most recent
-        elseif dryos.cf_card then
-            image_path = dryos.cf_card:image_path(0)
-        else
-            print("No card found!")
-            create_demo_level()
-            return true
-        end
-        
-        print("Image: " .. image_path)
-    else
-        print("Camera not available - using demo")
-        create_demo_level()
-        return true
+-- Create a level from a bitmap object (bmp)
+function create_level_from_bitmap(bmp)
+    print("[ISOQUEST] create_level_from_bitmap() called")
+
+    if not bmp then
+        print("[ISOQUEST][ERROR] bmp is NIL in create_level_from_bitmap()")
+        return false
     end
 
-    print("Reading image file...")
-    
-    -- Read JPEG file as binary
-    local file = io.open(image_path, "rb")
-    if not file then
-        print("Failed to open image file!")
-        create_demo_level()
-        return true
-    end
-    
-    local jpeg_binary = file:read("*a")
-    file:close()
-    
-    if not jpeg_binary or #jpeg_binary == 0 then
-        print("File is empty!")
-        create_demo_level()
-        return true
-    end
-    
-    print("File size: " .. #jpeg_binary .. " bytes")
-    print("Decoding JPEG...")
-    print("This may take 30-60 seconds...")
-    
-    -- Decode JPEG with error handling
-    local success, Info = pcall(DecodeJpeg, jpeg_binary)
-    
-    if not success then
-        print("JPEG decode failed: " .. tostring(Info))
-        create_demo_level()
-        return true
-    end
-    
-    print("Decoded: " .. Info.X .. "x" .. Info.Y)
-    print("Analyzing edges...")
+    print("[ISOQUEST] bmp.width="..tostring(bmp.width)..
+          " bmp.height="..tostring(bmp.height)..
+          " DARK_THRESHOLD="..tostring(DARK_THRESHOLD)..
+          " DARK_RATIO="..tostring(DARK_RATIO))
 
     init_level()
 
-    local samples = 2
-    local threshold = 30
-    local img_width = Info.X
-    local img_height = Info.Y
+    local w = bmp.width
+    local h = H   -- using screen height
 
-    -- Helper function to get pixel brightness
-    local function get_brightness(x, y)
-        -- Convert 2D coordinates to 1D index
-        local pixel_index = y * img_width + x + 1
-        
-        -- Get RGB values from Pixels array
-        local r = Info.Pixels[1][pixel_index] or 0
-        local g = Info.Pixels[2][pixel_index] or 0
-        local b = Info.Pixels[3][pixel_index] or 0
-        
-        -- Calculate brightness
-        return 0.299 * r + 0.587 * g + 0.114 * b
-    end
+    print("[ISOQUEST] Computing tiles: COLS="..COLS.." ROWS="..ROWS)
+    local tiles_x = math.min(COLS, math.floor(w / TILE))
+    local tiles_y = math.min(ROWS, math.floor(h / TILE))
 
-    for ty = 1, ROWS do
-        for tx = 1, COLS do
-            local edge_pixels = 0
-            local total = 0
+    print("[ISOQUEST] tiles_x="..tiles_x.." tiles_y="..tiles_y)
 
-            for sy = 0, samples - 1 do
-                for sx = 0, samples - 1 do
-                    -- Map game coordinates to image coordinates
-                    local img_x = math.floor((tx - 1) * TILE + sx * (TILE / samples)) * img_width / W
-                    local img_y = math.floor((ty - 1) * TILE + sy * (TILE / samples)) * img_height / H
-                    
-                    -- Clamp to image bounds
-                    img_x = math.max(0, math.min(img_x, img_width - 1))
-                    img_y = math.max(0, math.min(img_y, img_height - 1))
-                    
-                    local brightness = get_brightness(img_x, img_y)
-                    
-                    -- Sample neighbor pixel
-                    local neighbor_x = math.min(img_x + 3, img_width - 1)
-                    local neighbor_brightness = get_brightness(neighbor_x, img_y)
+    local total_tiles = tiles_x * tiles_y
+    print("[ISOQUEST] Total tiles to process: "..total_tiles)
 
-                    -- Edge detection: high gradient = edge
-                    if math.abs(brightness - neighbor_brightness) > threshold then
-                        edge_pixels = edge_pixels + 1
+    local processed = 0
+
+    for ty = 1, tiles_y do
+        for tx = 1, tiles_x do
+            processed = processed + 1
+            if processed % 50 == 0 then
+                print("[ISOQUEST] Processed "..processed.." / "..total_tiles.." tiles...")
+            end
+
+            local dark_count = 0
+            local total = TILE * TILE
+
+            local px0 = (tx - 1) * TILE
+            local py0 = (ty - 1) * TILE
+
+            for py_ = 0, TILE - 1 do
+                local y = py0 + py_
+                for px_ = 0, TILE - 1 do
+                    local x = px0 + px_
+
+                    local r,g,b = bmp:get_pixel(x, y)
+                    if r then
+                        local brightness = (r + g + b) / 3
+                        if brightness < DARK_THRESHOLD then
+                            dark_count = dark_count + 1
+                        end
+                    else
+                        -- only warn occasionally
+                        -- (don't spam per pixel)
                     end
-                    total = total + 1
                 end
             end
 
-            -- If enough edges detected, mark as platform
-            if edge_pixels / total > 0.15 then
+            if dark_count / total >= DARK_RATIO then
                 level[ty][tx] = 1
-            end
-        end
-
-        if ty % 5 == 0 then
-            print(math.floor(ty/ROWS*100) .. "%")
-            task.yield(10)
-        end
-    end
-
-    -- Add ground
-    for x = 1, COLS do
-        level[ROWS][x] = 1
-        level[ROWS-1][x] = 1
-    end
-
-    -- Thicken platforms for better gameplay
-    for ty = 1, ROWS - 2 do
-        for tx = 1, COLS do
-            if level[ty][tx] == 1 and level[ty+1][tx] == 0 then
-                level[ty+1][tx] = 1
+            else
+                level[ty][tx] = 0
             end
         end
     end
 
-    print("Level generated!")
+    print("[ISOQUEST] Bitmap level generation complete!")
     return true
 end
+
+local bmp, err
+
+-- Edge detection & capture
+function capture_and_detect_edges()
+    print("[ISOQUEST] capture_and_detect_edges() called")
+    print("[ISOQUEST] Attempting to load VRAM BMP...")
+
+    local path = "ML/SCRIPTS/screenshots/VRAM8.BMP"
+    print("[ISOQUEST] Bitmap.from_file path: "..path)
+
+    bmp, err = Bitmap.from_file(path)
+
+    if not bmp then
+        print("[ISOQUEST][ERROR] Bitmap.from_file failed.")
+        print("[ISOQUEST][ERROR] Reason: "..tostring(err))
+        return false
+    end
+
+    print("[ISOQUEST] Bitmap loaded successfully. width="..
+          tostring(bmp.width).." height="..tostring(bmp.height))
+
+    print("[ISOQUEST] Generating level from bitmap...")
+    local ok = create_level_from_bitmap(bmp)
+    if not ok then
+        print("[ISOQUEST][ERROR] create_level_from_bitmap() returned false")
+        return false
+    end
+
+    print("[ISOQUEST] Level generated successfully!")
+    return true
+end
+
 -- Demo level
 function create_demo_level()
-    console.show()
-    print("Loading demo level...")
+    print("[ISOQUEST] create_demo_level()")
 
     init_level()
 
+    print("[ISOQUEST] Creating ground...")
     -- Ground
     for x = 1, COLS do
         level[ROWS][x] = 1
         level[ROWS-1][x] = 1
     end
 
+    print("[ISOQUEST] Creating sample platforms...")
     -- Platforms
     for x = 8, 15 do level[22][x] = 1 level[23][x] = 1 end
     for x = 18, 25 do level[18][x] = 1 level[19][x] = 1 end
     for x = 28, 35 do level[15][x] = 1 level[16][x] = 1 end
     for x = 10, 17 do level[12][x] = 1 level[13][x] = 1 end
 
+    print("[ISOQUEST] Creating walls...")
     -- Walls
     for y = 1, ROWS do
         level[y][1] = 1
@@ -233,7 +238,7 @@ function create_demo_level()
         level[y][COLS-1] = 1
     end
 
-    print("Demo ready!")
+    print("[ISOQUEST] Demo level ready")
 end
 
 -- Physics
@@ -292,14 +297,14 @@ function update_player()
         vx = vx * 0.85
     end
 
-    
     -- Cap horizontal speed
     if vx > 6 then vx = 6 end
     if vx < -6 then vx = -6 end
 end
 
--- Draw entire background ONCE (like pong clears screen once)
+-- Draw entire background (static level)
 function draw_level()
+    print("[ISOQUEST] draw_level()")
     display.clear()
     
     -- Sky background
@@ -323,9 +328,9 @@ function draw_level()
     display.print("MENU to exit", 10, 28, FONT.SMALL, COLOR_TEXT)
 end
 
--- Incremental draw - ONLY player (exactly like pong draws ball)
+-- Incremental draw - ONLY player
 function draw_player()
-    -- Erase old player position with TRANSPARENT (like pong erases ball)
+    -- Erase old player position
     display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
                 player_size + 2, player_size + 2, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
 
@@ -346,86 +351,97 @@ function draw_player()
         end
     end
 
-    -- Draw player at new position (like pong draws ball at new position)
-    display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
-                player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
-    display.rect(px - player_size/2, py - player_size/2,
-                player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
+    -- Draw player at new position
+    if sprite_image then
+        sprite_image:draw(px - player_size/2, py - player_size/2, player_size, player_size)
+    else
+        display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
+                    player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
+        display.rect(px - player_size/2, py - player_size/2,
+                    player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
+    end
 
-    -- Store position for next frame (like pong stores prev_ball_x/y)
+    -- Store position for next frame
     prev_px = px
     prev_py = py
 end
 
 -- Menu
 function draw_menu()
+    print("[ISOQUEST] draw_menu() state="..tostring(state))
     display.clear()
-    display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
-
-    display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
-    display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
-
-    local box_x, box_y = 180, 170
-    local box_w, box_h = 360, 100
-    display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
-
-    display.print("1. Draw level on paper", 200, 180, FONT.SMALL, COLOR_TEXT)
-    display.print("2. Point camera at it", 200, 200, FONT.SMALL, COLOR_TEXT)
-    display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
-    display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
-
-    display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
-    display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
-end
-
--- Game loop
-local running = false
-
-function game_loop()
-    -- Draw background ONCE (like pong does display.clear() once)
-    draw_level()
-    prev_px = px
-    prev_py = py
     
-    -- Main loop - only update player (like pong only updates ball/paddles)
-    while running do
-        update_player()
-        draw_player()
-        task.yield(20)
+    if menu_image then
+        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+        menu_image:draw(0,0)
+    else
+        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+
+        display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
+        display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
+
+        local box_x, box_y = 180, 170
+        local box_w, box_h = 360, 100
+        display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
+
+        display.print("1. Draw level on paper", 200, 180, FONT.SMALL, COLOR_TEXT)
+        display.print("2. Point camera at it", 200, 200, FONT.SMALL, COLOR_TEXT)
+        display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
+        display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
+
+        display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
+        display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
     end
 end
 
+-- Game loop flag
+local running = false
+
 -- Input handling
 function key_handler()
-   -- Process ALL keys in the buffer until getkey returns nil
     local handled = false
     while true do
         local key = keys:getkey()
-        if key == nil then break end  -- Exit when no more keys
+        if key == nil then break end
+
+        print("[ISOQUEST] key_handler() key="..tostring(key).." state="..tostring(state))
+
+        if key == KEY.PLAY then
+            console.show()
+        end
         if state == "menu" then
             if key == KEY.SET then
+                print("[ISOQUEST] SET pressed in MENU → processing capture")
                 state = "processing"
                 display.clear()
                 display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
                 display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
                 display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
-                task.yield(100)
 
-                capture_and_detect_edges()
+                local ok = capture_and_detect_edges()
+                if not ok then
+                    print("[ISOQUEST][ERROR] capture_and_detect_edges() failed. Returning to menu.")
+                    state = "menu"
+                    draw_menu()
+                    return true
+                end
 
                 px, py, vx, vy = 80, 300, 0, 0
                 state = "playing"
                 running = true
+                print("[ISOQUEST] Entering PLAYING state (custom level)")
                 draw_level()
                 prev_px = px
                 prev_py = py
                 return true
 
             elseif key == KEY.INFO then
+                print("[ISOQUEST] INFO pressed in MENU → demo level")
                 create_demo_level()
                 px, py, vx, vy = 80, 300, 0, 0
                 state = "playing"
                 running = true
+                print("[ISOQUEST] Entering PLAYING state (demo level)")
                 draw_level()
                 prev_px = px
                 prev_py = py
@@ -434,24 +450,27 @@ function key_handler()
 
         elseif state == "playing" then
             if key == KEY.LEFT then
+                print("[ISOQUEST] LEFT key in PLAYING")
                 if on_ground then
-                    vx = -5  -- Full control on ground
+                    vx = -5
                 else
-                    vx = vx - 1.5  -- Reduced air control via acceleration
+                    vx = vx - 1.5
                     if vx < -5 then vx = -5 end
                 end
                 handled = true
             end
             if key == KEY.RIGHT then
+                print("[ISOQUEST] RIGHT key in PLAYING")
                 if on_ground then
-                    vx = 5  -- Full control on ground
+                    vx = 5
                 else
-                    vx = vx + 1.5  -- Reduced air control via acceleration
+                    vx = vx + 1.5
                     if vx > 5 then vx = 5 end
                 end
                 handled = true
             end
             if key == KEY.UP or key == KEY.SET then
+                print("[ISOQUEST] JUMP key in PLAYING, jumps_remaining="..tostring(jumps_remaining))
                 if jumps_remaining > 0 then
                     vy = -11
                     jumps_remaining = jumps_remaining - 1
@@ -459,12 +478,10 @@ function key_handler()
                 handled = true
             end
             if key == KEY.MENU then
+                print("[ISOQUEST] MENU key in PLAYING → back to menu")
                 running = false
                 state = "load_menu"
                 handled = true
-            end
-            if key == KEY.PLAY then
-                console.show()
             end
         end
     end
@@ -472,6 +489,7 @@ function key_handler()
 end
 
 function main()
+    print("[ISOQUEST] main() starting up...")
     keys:start()
     menu.block(true)
     lv.start()
@@ -479,9 +497,12 @@ function main()
     sleep(0.5)
     display.clear()
 
+    -- Load custom images
+    load_custom_images()
+
     -- Initialize
     print("========================")
-    print("IsoQuest")
+    print("IsoQuest (DEBUG BUILD)")
     print("========================")
     print("")
     print("Press SET to start!")
@@ -490,7 +511,6 @@ function main()
     draw_menu()
     state = "menu"
 
-    
     while true do
         key_handler()
 
@@ -498,6 +518,7 @@ function main()
             update_player()
             draw_player()
         elseif state == "load_menu" then
+            print("[ISOQUEST] Transition state load_menu → menu")
             draw_menu()
             state = "menu"
         end
@@ -505,8 +526,10 @@ function main()
         task.yield(20)
     end
 
+    -- Unreachable in practice
     menu.block(false)
     keys:stop()
 end
 
 main()
+print("[ISOQUEST] main() exited (unexpected)")
