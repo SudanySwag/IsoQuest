@@ -43,6 +43,7 @@ local sprite_image = nil
 local TRANSPARENT_KEY = rgb(255, 0, 255)  -- Magenta as transparent color
 
 local exit_script = false
+local bmp_path = "ML/SCRIPTS/screenshots/capture.bmp"
 
 function load_custom_images()
     print("[ISOQUEST] load_custom_images()")
@@ -423,10 +424,10 @@ function draw_menu()
     display.clear()
     
     if menu_image then
-        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+        display.rect(0, 0, W, H, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
         menu_image:draw(0,0)
     else
-        display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
+        display.rect(0, 0, W, H, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
 
         display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
         display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
@@ -461,11 +462,10 @@ function key_handler()
                 print("[ISOQUEST] SET pressed → capturing screenshot")
 
                 -- 1. Hide ALL ML + Canon overlays
-                console.hide()               -- hides console if visible
                 print("[ISOQUEST] Overlays hidden")
 
                 -- 2. Trigger autofocus
-                lens.autofocus()                         
+                -- lens.autofocus()                         
                 print("[ISOQUEST] Autofocus started")
 
                 while lens.autofocusing do
@@ -473,12 +473,13 @@ function key_handler()
                 end
 
                                 -- Capture screenshot to valid BMP with proper headers
-                local bmp_path = "ML/SCRIPTS/screenshots/capture.bmp"
+                
+                display.clear()
+                lv.pause()
                 display.screenshot(bmp_path)
                 print("[ISOQUEST] Screenshot saved to: " .. bmp_path)
 
                 state = "processing"
-                display.clear()
                 display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
                 display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
 
@@ -496,6 +497,7 @@ function key_handler()
                 state = "playing"
                 running = true
                 print("[ISOQUEST] Entering PLAYING state (screenshot level)")
+                lv.resume()
                 draw_level()
                 prev_px = px
                 prev_py = py
@@ -564,10 +566,11 @@ end
 function main()
     print("[ISOQUEST] main() starting up...")
     keys:start()
+    menu.close()
     menu.block(true)
+    console.hide()
     lv.start()
-
-    sleep(0.5)
+    lv.zoom = 1.2
     display.clear()
 
     -- Load custom images
@@ -606,6 +609,7 @@ function main()
 
     -- Unreachable in practice
     menu.block(false)
+    menu.open()
     keys:stop()
 end
 
