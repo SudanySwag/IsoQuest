@@ -25,13 +25,10 @@ local state = "load_menu"
 local level = {}
 local px, py, vx, vy = 100, 200, 0, 0
 local on_ground = false
-local cam_x = 0
-local jumps_remaining = 2 -- variable keeping track of # jumps for double jump function
-
--- Previous player position for erasing
+local jumps_remaining = 2
 local prev_px, prev_py = 100, 200
 
--- CUSTOM RGB COLORS
+-- RGB color helper
 local function rgb(r, g, b)
     return (r * 65536) + (g * 256) + b
 end
@@ -331,28 +328,21 @@ function draw_level()
             end
         end
     end
-
-    -- HUD (static)
     display.rect(5, 5, 200, 40, COLOR_TEXT, COLOR_MENU_BG)
     display.print("ISOQuest", 10, 10, FONT.MED, COLOR_TEXT)
     display.print("MENU to exit", 10, 28, FONT.SMALL, COLOR_TEXT)
 end
 
--- Incremental draw - ONLY player (exactly like pong draws ball)
 function draw_player()
-    -- Erase old player position with TRANSPARENT (like pong erases ball)
     display.rect(prev_px - player_size/2 - 1, prev_py - player_size/2 - 1,
                 player_size + 2, player_size + 2, COLOR.TRANSPARENT, COLOR.TRANSPARENT)
-
-    -- Redraw any platform tiles that were under the old player
     local prev_tile_x = math.floor(prev_px / TILE) + 1
     local prev_tile_y = math.floor(prev_py / TILE) + 1
-    
     for dy = -1, 1 do
         for dx = -1, 1 do
             local ty = prev_tile_y + dy
             local tx = prev_tile_x + dx
-            if ty >= 1 and ty <= ROWS and tx >= 1 and tx <= COLS and level[ty][tx] == 1 then
+            if ty >= 1 and ty <= ROWS and tx >= 1 and tx <= COLS and get_tile(tx, ty) == 1 then
                 local sx = (tx - 1) * TILE
                 local sy = (ty - 1) * TILE
                 local color = (ty >= ROWS - 1) and COLOR_GROUND or COLOR_PLATFORM
@@ -360,74 +350,45 @@ function draw_player()
             end
         end
     end
-
-    -- Draw player at new position (like pong draws ball at new position)
     display.rect(px - player_size/2 - 1, py - player_size/2 - 1,
                 player_size + 2, player_size + 2, COLOR_TEXT, COLOR_TEXT)
     display.rect(px - player_size/2, py - player_size/2,
                 player_size, player_size, rgb(180, 0, 0), COLOR_PLAYER)
-
-    -- Store position for next frame (like pong stores prev_ball_x/y)
     prev_px = px
     prev_py = py
 end
 
--- Menu
 function draw_menu()
     display.clear()
     display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
-
     display.print("ISOQuest", 202, 82, FONT.LARGE, COLOR_MENU_BG)
     display.print("ISOQuest", 200, 80, FONT.LARGE, COLOR_TEXT)
-
     local box_x, box_y = 180, 170
     local box_w, box_h = 360, 100
     display.rect(box_x, box_y, box_w, box_h, COLOR_TEXT, COLOR_MENU_BG)
-
     display.print("1. Draw level on paper", 200, 180, FONT.SMALL, COLOR_TEXT)
     display.print("2. Point camera at it", 200, 200, FONT.SMALL, COLOR_TEXT)
     display.print("3. Press SET to capture", 200, 220, FONT.SMALL, COLOR_TEXT)
     display.print("4. Play your level!", 200, 240, FONT.SMALL, COLOR_TEXT)
-
     display.print("SET - Capture & Generate", 190, 340, FONT.MED, COLOR_PLAYER)
     display.print("INFO - Play Demo Level", 210, 370, FONT.SMALL, COLOR_TEXT)
 end
 
--- Game loop
 local running = false
 
-function game_loop()
-    -- Draw background ONCE (like pong does display.clear() once)
-    draw_level()
-    prev_px = px
-    prev_py = py
-    
-    -- Main loop - only update player (like pong only updates ball/paddles)
-    while running do
-        update_player()
-        draw_player()
-        task.yield(20)
-    end
-end
-
--- Input handling
 function key_handler()
-   -- Process ALL keys in the buffer until getkey returns nil
-    local handled = false
     while true do
         local key = keys:getkey()
-        if key == nil then break end  -- Exit when no more keys
+        if key == nil then break end
         if state == "menu" then
             if key == KEY.SET then
                 state = "processing"
                 display.clear()
                 display.rect(0, 0, W, H, COLOR_SKY, COLOR_SKY)
                 display.print("Processing...", 250, 230, FONT.LARGE, COLOR_TEXT)
-                display.print("Please wait...", 260, 270, FONT.MED, COLOR_TEXT)
+                display.print("Streaming decode...", 240, 270, FONT.MED, COLOR_TEXT)
                 task.yield(100)
-
                 capture_and_detect_edges()
-
                 px, py, vx, vy = 80, 300, 0, 0
                 state = "playing"
                 running = true
@@ -446,69 +407,47 @@ function key_handler()
                 prev_py = py
                 return true
             end
-
         elseif state == "playing" then
             if key == KEY.LEFT then
-                if on_ground then
-                    vx = -5  -- Full control on ground
-                else
-                    vx = vx - 1.5  -- Reduced air control via acceleration
-                    if vx < -5 then vx = -5 end
-                end
-                handled = true
+                vx = on_ground and -5 or math.max(vx - 1.5, -5)
             end
             if key == KEY.RIGHT then
-                if on_ground then
-                    vx = 5  -- Full control on ground
-                else
-                    vx = vx + 1.5  -- Reduced air control via acceleration
-                    if vx > 5 then vx = 5 end
-                end
-                handled = true
+                vx = on_ground and 5 or math.min(vx + 1.5, 5)
             end
             if key == KEY.UP or key == KEY.SET then
                 if jumps_remaining > 0 then
                     vy = -11
                     jumps_remaining = jumps_remaining - 1
                 end
-                handled = true
             end
             if key == KEY.MENU then
                 running = false
                 state = "load_menu"
-                handled = true
             end
             if key == KEY.PLAY then
                 console.show()
             end
         end
     end
-    return handled
+    return false
 end
 
 function main()
     keys:start()
     menu.block(true)
     lv.start()
-
     sleep(0.5)
     display.clear()
-
-    -- Initialize
     print("========================")
     print("IsoQuest")
     print("========================")
     print("")
     print("Press SET to start!")
     print("========================")
-
     draw_menu()
     state = "menu"
-
-    
     while true do
         key_handler()
-
         if running then
             update_player()
             draw_player()
@@ -516,10 +455,8 @@ function main()
             draw_menu()
             state = "menu"
         end
-
         task.yield(20)
     end
-
     menu.block(false)
     keys:stop()
 end
